@@ -1,0 +1,226 @@
+@page "/admin/orders/{Id}"
+@attribute [Authorize(Roles = "Admin")]
+@inject IOrderService OrderService
+@inject IInvoiceService InvoiceService
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+
+<div class="page-header d-flex justify-content-between align-items-start flex-wrap gap-2">
+    <h1>Order <span class="font-mono">@Id</span></h1>
+    <a href="/admin/orders" class="btn btn-outline-secondary btn-sm">Back</a>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+else if (_order == null)
+{
+    <div class="alert alert-warning">Order not found.</div>
+}
+else
+{
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="font-mono">@Id</span>
+                    <span class="badge badge-status status-@_order.Status.ToString().ToLowerInvariant()">@_order.Status</span>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-3">User</dt>
+                        <dd class="col-sm-9">@(_user?.FullName ?? _user?.Email ?? _order.UserId)</dd>
+                        <dt class="col-sm-3">Total</dt>
+                        <dd class="col-sm-9 font-mono">@_order.Total.ToString("C2")</dd>
+                        <dt class="col-sm-3">Created</dt>
+                        <dd class="col-sm-9">@_order.CreatedAt.ToString("MMM d, yyyy HH:mm")</dd>
+                        @if (_order.NextDueDate.HasValue)
+                        {
+                            <dt class="col-sm-3">Next Due</dt>
+                            <dd class="col-sm-9">@_order.NextDueDate.Value.ToString("MMM d, yyyy")</dd>
+                        }
+                        @if (!string.IsNullOrEmpty(_order.Notes))
+                        {
+                            <dt class="col-sm-3">Notes</dt>
+                            <dd class="col-sm-9">@_order.Notes</dd>
+                        }
+                    </dl>
+                </div>
+                <div class="card-footer">
+                    @if (_order.Status == OrderStatus.Pending || _order.Status == OrderStatus.Suspended)
+                    {
+                        <button type="button" class="btn btn-success btn-sm" @onclick="Activate" disabled="@_actionLoading">
+                            @if (_actionLoading) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            Activate
+                        </button>
+                    }
+                    @if (_order.Status == OrderStatus.Active)
+                    {
+                        <button type="button" class="btn btn-warning btn-sm" @onclick="Suspend" disabled="@_actionLoading">
+                            @if (_actionLoading) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            Suspend
+                        </button>
+                    }
+                    @if (_order.Status != OrderStatus.Cancelled && _order.Status != OrderStatus.Terminated)
+                    {
+                        <button type="button" class="btn btn-danger btn-sm" @onclick="Cancel" disabled="@_actionLoading">
+                            @if (_actionLoading) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            Cancel
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Order items</h5>
+                </div>
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Qty</th>
+                                <th>Unit Price</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _order.Items)
+                            {
+                                <tr>
+                                    <td>@item.ProductName</td>
+                                    <td>@item.Quantity</td>
+                                    <td class="font-mono">@item.UnitPrice.ToString("C2")</td>
+                                    <td class="font-mono">@item.Total.ToString("C2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Related invoices</h5>
+                </div>
+                <div class="card-body">
+                    @if (_invoices.Any())
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var inv in _invoices)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                    <span>@inv.InvoiceNumber</span>
+                                    <span class="badge status-@(inv.Status == InvoiceStatus.Paid ? "paid" : inv.Status == InvoiceStatus.Overdue ? "overdue" : "unpaid")">@inv.Status</span>
+                                    <a href="#" class="btn btn-sm btn-outline-primary">View</a>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0 small">No invoices for this order.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = string.Empty;
+
+    private OrderDto? _order;
+    private ApplicationUser? _user;
+    private List<InvoiceDto> _invoices = new();
+    private bool _loading = true;
+    private bool _actionLoading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _order = await OrderService.GetByIdAsync(Id);
+            if (_order != null)
+            {
+                var userTask = UserManager.FindByIdAsync(_order.UserId);
+                var invoicesTask = InvoiceService.GetByOrderAsync(Id);
+                await Task.WhenAll(userTask, invoicesTask);
+                _user = await userTask;
+                _invoices = (await invoicesTask).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task Activate()
+    {
+        if (_order == null) return;
+        _actionLoading = true;
+        _error = null;
+        try
+        {
+            var result = await OrderService.ActivateOrderAsync(Id);
+            if (result != null) _order = result;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _actionLoading = false; }
+    }
+
+    private async Task Suspend()
+    {
+        if (_order == null) return;
+        _actionLoading = true;
+        _error = null;
+        try
+        {
+            var result = await OrderService.SuspendOrderAsync(Id);
+            if (result != null) _order = result;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _actionLoading = false; }
+    }
+
+    private async Task Cancel()
+    {
+        if (_order == null) return;
+        _actionLoading = true;
+        _error = null;
+        try
+        {
+            var result = await OrderService.CancelOrderAsync(Id);
+            if (result != null) _order = result;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _actionLoading = false; }
+    }
+}

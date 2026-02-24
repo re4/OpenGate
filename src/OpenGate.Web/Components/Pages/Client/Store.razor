@@ -1,0 +1,150 @@
+@page "/store"
+@attribute [AllowAnonymous]
+@inject IProductService ProductService
+@inject ICategoryService CategoryService
+@inject CartService CartService
+@inject NavigationManager Navigation
+
+<PageTitle>Store - OpenGate</PageTitle>
+
+<div class="page-header">
+    <h1>Store</h1>
+    <p>Products and services</p>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+}
+else
+{
+    @if (_categories.Any())
+    {
+        <div class="filter-bar">
+            <button type="button" class="filter-btn @(_selectedCategoryId == null ? "active" : "")"
+                    @onclick='() => SelectCategory(null)'>
+                All
+            </button>
+            @foreach (var cat in _categories.Where(c => c.IsActive))
+            {
+                <button type="button" class="filter-btn @(_selectedCategoryId == cat.Id ? "active" : "")"
+                        @onclick='() => SelectCategory(cat.Id)'>
+                    @cat.Name
+                </button>
+            }
+        </div>
+    }
+
+    @if (_products.Any())
+    {
+        <div class="row g-3">
+            @foreach (var product in _products)
+            {
+                <div class="col-sm-6 col-lg-4">
+                    <div class="card product-card h-100" @onclick='() => NavigateToProduct(product.Id)'>
+                        <div class="card-body d-flex flex-column">
+                            <h6 style="font-weight: 600; margin-bottom: 0.35rem;">@product.Name</h6>
+                            <p class="text-muted small flex-grow-1" style="font-size: 0.75rem; line-height: 1.5; margin-bottom: 0.75rem;">
+                                @(product.Description != null && product.Description.Length > 100
+                                    ? product.Description[..100] + "..."
+                                    : product.Description ?? "")
+                            </p>
+                            <div class="d-flex align-items-end justify-content-between">
+                                <div>
+                                    <span class="product-price">@product.Price.ToString("C")</span>
+                                    <span class="product-cycle">/ @FormatCycle(product.BillingCycle)</span>
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm"
+                                        @onclick:stopPropagation="true"
+                                        @onclick='() => AddToCart(product)'>
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="empty-state">
+            <i class="bi bi-inbox d-block"></i>
+            <h5>No products</h5>
+            <p>Nothing available right now.</p>
+        </div>
+    }
+}
+
+@code {
+    private List<CategoryDto> _categories = new();
+    private List<ProductDto> _products = new();
+    private string? _selectedCategoryId;
+    private bool _loading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync() => await LoadDataAsync();
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+        try
+        {
+            var categoriesTask = CategoryService.GetAllAsync();
+            var productsTask = _selectedCategoryId == null
+                ? ProductService.GetActiveAsync()
+                : ProductService.GetByCategoryAsync(_selectedCategoryId);
+
+            await Task.WhenAll(categoriesTask, productsTask);
+
+            _categories = (await categoriesTask).ToList();
+            _products = (await productsTask).ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void SelectCategory(string? id)
+    {
+        _selectedCategoryId = id;
+        _ = LoadDataAsync();
+    }
+
+    private void NavigateToProduct(string id) => Navigation.NavigateTo($"/store/product/{id}");
+
+    private void AddToCart(ProductDto product)
+    {
+        CartService.AddItem(new CartItemDto
+        {
+            ProductId = product.Id,
+            ProductName = product.Name,
+            UnitPrice = product.Price,
+            Quantity = 1,
+            BillingCycle = product.BillingCycle,
+            SelectedOptions = new()
+        });
+    }
+
+    private static string FormatCycle(BillingCycle c) => c switch
+    {
+        BillingCycle.OneTime => "once",
+        BillingCycle.Monthly => "mo",
+        BillingCycle.Quarterly => "qtr",
+        BillingCycle.SemiAnnually => "6mo",
+        BillingCycle.Annually => "yr",
+        _ => c.ToString().ToLower()
+    };
+}

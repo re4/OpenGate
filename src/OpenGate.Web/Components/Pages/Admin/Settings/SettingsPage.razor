@@ -1,0 +1,210 @@
+@page "/admin/settings"
+@attribute [Authorize(Roles = "Admin")]
+@inject ISettingService SettingService
+
+<div class="page-header">
+    <h1>Settings</h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+else
+{
+    @if (_successMessage != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @_successMessage
+            <button type="button" class="btn-close" @onclick="() => _successMessage = null"></button>
+        </div>
+    }
+
+    var groups = _settings.GroupBy(s => string.IsNullOrEmpty(s.Group) ? "General" : s.Group)
+        .OrderBy(g => g.Key == "General" ? 0 : g.Key == "Email" ? 1 : g.Key == "Payment" ? 2 : g.Key == "Provisioning" ? 3 : 4)
+        .ToList();
+
+    @if (!groups.Any())
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="empty-state">
+                    <i class="bi bi-gear d-block"></i>
+                    <p class="mb-0">No settings configured</p>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-header p-0 border-bottom-0">
+                <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                    @foreach (var group in groups)
+                    {
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link d-flex align-items-center gap-2 @(_activeTab == group.Key ? "active" : "")"
+                                    type="button" role="tab"
+                                    @onclick="() => _activeTab = group.Key">
+                                <i class="bi @GetGroupIcon(group.Key)"></i>
+                                @group.Key
+                            </button>
+                        </li>
+                    }
+                </ul>
+            </div>
+            <div class="card-body">
+                @foreach (var group in groups)
+                {
+                    @if (_activeTab == group.Key)
+                    {
+                        <EditForm Model="@GetGroupModel(group.Key)" OnValidSubmit="() => SaveGroup(group.Key)">
+                            @foreach (var setting in group)
+                            {
+                                var key = setting.Key;
+                                <div class="mb-3">
+                                    <label class="form-label fw-medium">@FormatLabel(key)</label>
+                                    @if (!string.IsNullOrEmpty(setting.Description))
+                                    {
+                                        <small class="text-muted d-block mb-1">@setting.Description</small>
+                                    }
+                                    @if (IsPasswordField(key))
+                                    {
+                                        <input type="password" class="form-control" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
+                                               @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
+                                    }
+                                    else if (IsBooleanField(key))
+                                    {
+                                        <div class="form-check form-switch mt-1">
+                                            <input type="checkbox" class="form-check-input" checked="@(GetBoolValue(key, setting.Value))"
+                                                   @onchange="@(e => _groupValues[key] = (e.Value is true ? "true" : "false"))" />
+                                            <label class="form-check-label text-muted">@(GetBoolValue(key, setting.Value) ? "Enabled" : "Disabled")</label>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <input type="text" class="form-control" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
+                                               @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
+                                    }
+                                </div>
+                            }
+                            <button type="submit" class="btn btn-primary" disabled="@_savingGroups.Contains(group.Key)">
+                                @if (_savingGroups.Contains(group.Key))
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                Save
+                            </button>
+                        </EditForm>
+                    }
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<SettingDto> _settings = new();
+    private Dictionary<string, string> _groupValues = new();
+    private HashSet<string> _savingGroups = new();
+    private string _activeTab = "General";
+    private bool _loading = true;
+    private string? _error;
+    private string? _successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _settings = (await SettingService.GetAllAsync()).ToList();
+            foreach (var s in _settings)
+            {
+                _groupValues[s.Key] = s.Value;
+            }
+
+            var firstGroup = _settings
+                .Select(s => string.IsNullOrEmpty(s.Group) ? "General" : s.Group)
+                .OrderBy(g => g == "General" ? 0 : g == "Email" ? 1 : g == "Payment" ? 2 : g == "Provisioning" ? 3 : 4)
+                .FirstOrDefault();
+            if (firstGroup != null)
+                _activeTab = firstGroup;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private object GetGroupModel(string group) => new { };
+
+    private async Task SaveGroup(string group)
+    {
+        _savingGroups.Add(group);
+        _error = null;
+        _successMessage = null;
+        try
+        {
+            var groupSettings = _settings.Where(s => (string.IsNullOrEmpty(s.Group) ? "General" : s.Group) == group).ToList();
+            foreach (var setting in groupSettings)
+            {
+                if (_groupValues.TryGetValue(setting.Key, out var value))
+                {
+                    await SettingService.SetValueAsync(setting.Key, value);
+                }
+            }
+            _successMessage = $"{group} settings saved.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _savingGroups.Remove(group);
+        }
+    }
+
+    private static string FormatLabel(string key)
+    {
+        var result = System.Text.RegularExpressions.Regex.Replace(key, "([a-z])([A-Z])", "$1 $2");
+        result = System.Text.RegularExpressions.Regex.Replace(result, "([A-Z]+)([A-Z][a-z])", "$1 $2");
+        return result;
+    }
+
+    private static string GetGroupIcon(string group) => group switch
+    {
+        "General" => "bi-sliders",
+        "Email" => "bi-envelope",
+        "Payment" => "bi-credit-card",
+        "Provisioning" => "bi-server",
+        _ => "bi-gear"
+    };
+
+    private static bool IsPasswordField(string key) =>
+        key.Contains("Secret", StringComparison.OrdinalIgnoreCase) ||
+        key.Contains("Password", StringComparison.OrdinalIgnoreCase) ||
+        (key.Contains("Key", StringComparison.OrdinalIgnoreCase) && key.Contains("Api", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsBooleanField(string key) =>
+        key.Contains("Enabled", StringComparison.OrdinalIgnoreCase) ||
+        key.Contains("Sandbox", StringComparison.OrdinalIgnoreCase) ||
+        key.Contains("UseSsl", StringComparison.OrdinalIgnoreCase);
+
+    private bool GetBoolValue(string key, string fallback)
+    {
+        var val = _groupValues.GetValueOrDefault(key, fallback);
+        return string.Equals(val, "true", StringComparison.OrdinalIgnoreCase);
+    }
+}

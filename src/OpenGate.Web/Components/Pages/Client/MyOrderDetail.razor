@@ -1,0 +1,182 @@
+@page "/my/orders/{Id}"
+@attribute [Authorize]
+@inject IOrderService OrderService
+@inject IInvoiceService InvoiceService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Order @(_order?.Id ?? "") - OpenGate</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+}
+else if (_order == null || !_isOwner)
+{
+    <div class="empty-state">
+        <i class="bi bi-shield-x d-block"></i>
+        <h5>Order not found</h5>
+        <p class="mb-3">This order does not exist or you don't have access to it.</p>
+        <a href="/my/orders" class="btn btn-primary">Back to My Orders</a>
+    </div>
+}
+else
+{
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/my/orders">Orders</a></li>
+            <li class="breadcrumb-item active">Order @Id</li>
+        </ol>
+    </nav>
+
+    <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h1>Order <code class="font-mono">@Id</code></h1>
+        <span class="badge status-@_order.Status.ToString().ToLowerInvariant()">@_order.Status</span>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Order Items</h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Qty</th>
+                                <th>Unit Price</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _order.Items)
+                            {
+                                <tr>
+                                    <td>@item.ProductName</td>
+                                    <td>@item.Quantity</td>
+                                    <td><span class="font-mono">@item.UnitPrice.ToString("C")</span></td>
+                                    <td><span class="font-mono">@item.Total.ToString("C")</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer d-flex justify-content-between">
+                    <span class="fw-bold">Total</span>
+                    <span class="fw-bold font-mono">@_order.Total.ToString("C")</span>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_order.Notes))
+            {
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h6>Notes</h6>
+                        <p class="mb-0 text-muted">@_order.Notes</p>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Related Invoices</h5>
+                </div>
+                <div class="card-body">
+                    @if (_invoices.Any())
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var inv in _invoices)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                    <div>
+                                        <span class="font-mono">@inv.InvoiceNumber</span>
+                                        <span class="badge status-@inv.Status.ToString().ToLowerInvariant() ms-2">@inv.Status</span>
+                                    </div>
+                                    @if (inv.Status != InvoiceStatus.Paid)
+                                    {
+                                        <a href="/my/invoices/@inv.Id/pay" class="btn btn-sm btn-primary">Pay</a>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">No invoices for this order.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = string.Empty;
+
+    private OrderDto? _order;
+    private List<InvoiceDto> _invoices = new();
+    private bool _loading = true;
+    private string? _errorMessage;
+    private bool _isOwner;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(Id))
+        {
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+        _isOwner = false;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                _loading = false;
+                return;
+            }
+
+            _order = await OrderService.GetByIdAsync(Id);
+            if (_order != null)
+            {
+                _isOwner = _order.UserId == userId;
+                if (_isOwner)
+                {
+                    _invoices = (await InvoiceService.GetByOrderAsync(Id)).ToList();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+}

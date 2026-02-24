@@ -1,0 +1,115 @@
+@page "/admin/orders"
+@attribute [Authorize(Roles = "Admin")]
+@inject IOrderService OrderService
+@inject UserManager<ApplicationUser> UserManager
+
+<div class="page-header">
+    <h1>Orders</h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+else
+{
+    <div class="filter-bar">
+        <button type="button" class="filter-btn @(string.IsNullOrEmpty(_statusFilterStr) ? "active" : "")"
+                @onclick='() => _statusFilterStr = ""'>
+            All
+        </button>
+        @foreach (OrderStatus s in Enum.GetValues(typeof(OrderStatus)))
+        {
+            var statusVal = s.ToString();
+            <button type="button" class="filter-btn @(_statusFilterStr == statusVal ? "active" : "")"
+                    @onclick='() => _statusFilterStr = statusVal'>
+                @s
+            </button>
+        }
+    </div>
+
+    @if (!_filteredOrders.Any())
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="empty-state">
+                    <i class="bi bi-receipt d-block"></i>
+                    <p class="mb-0">No orders found</p>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>User</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var order in _filteredOrders)
+                        {
+                            var user = _users.FirstOrDefault(u => u.Id.ToString() == order.UserId);
+                            <tr>
+                                <td><span class="font-mono">@(order.Id.Length > 12 ? order.Id[..12] + "..." : order.Id)</span></td>
+                                <td>@(user?.FullName ?? user?.Email ?? order.UserId)</td>
+                                <td class="font-mono">@order.Total.ToString("C2")</td>
+                                <td><span class="badge badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span></td>
+                                <td>@order.CreatedAt.ToString("MMM d, yyyy HH:mm")</td>
+                                <td>
+                                    <a href="/admin/orders/@order.Id" class="btn btn-sm btn-outline-primary">View</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<OrderDto> _orders = new();
+    private List<ApplicationUser> _users = new();
+    private string _statusFilterStr = "";
+    private bool _loading = true;
+    private string? _error;
+
+    private IEnumerable<OrderDto> _filteredOrders =>
+        !string.IsNullOrEmpty(_statusFilterStr) && Enum.TryParse<OrderStatus>(_statusFilterStr, out var status)
+            ? _orders.Where(o => o.Status == status)
+            : _orders;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _orders = (await OrderService.GetAllAsync()).OrderByDescending(o => o.CreatedAt).ToList();
+            _users = UserManager.Users.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

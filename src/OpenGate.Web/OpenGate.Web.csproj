@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>14</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AspNetCore.Identity.MongoDbCore" Version="7.0.0" />
+    <PackageReference Include="QuestPDF" Version="2026.2.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OpenGate.Application\OpenGate.Application.csproj" />
+    <ProjectReference Include="..\OpenGate.Infrastructure\OpenGate.Infrastructure.csproj" />
+    <ProjectReference Include="..\OpenGate.Extensions.Abstractions\OpenGate.Extensions.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

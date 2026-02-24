@@ -1,0 +1,128 @@
+@page "/"
+@attribute [AllowAnonymous]
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IOrderService OrderService
+@inject ITicketService TicketService
+
+<AuthorizeView>
+    <NotAuthorized>
+        <div class="py-5">
+            <h1 style="font-size: 2rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0.5rem;">
+                OpenGate
+            </h1>
+            <p class="text-muted" style="font-size: 1rem; max-width: 420px; margin-bottom: 2rem;">
+                Self-hosted billing and provisioning for hosting providers.
+            </p>
+            <div class="d-flex gap-2">
+                <a href="/store" class="btn btn-primary">Browse store</a>
+                <a href="/login" class="btn btn-outline-secondary">Sign in</a>
+            </div>
+        </div>
+    </NotAuthorized>
+    <Authorized>
+        <div class="page-header">
+            <h1>Overview</h1>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-sm-6 col-lg-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <div class="stat-label">Active Orders</div>
+                        <div class="stat-value">@_activeOrders</div>
+                        <span class="stat-icon"><i class="bi bi-box"></i></span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <div class="stat-label">Total Orders</div>
+                        <div class="stat-value">@_orderCount</div>
+                        <span class="stat-icon"><i class="bi bi-receipt"></i></span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <div class="stat-label">Open Tickets</div>
+                        <div class="stat-value">@_openTicketsCount</div>
+                        <span class="stat-icon"><i class="bi bi-chat-text"></i></span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <a href="/store" class="card text-decoration-none" style="border-style: dashed;">
+                    <div class="card-body d-flex align-items-center justify-content-center" style="min-height: 88px;">
+                        <span class="text-muted" style="font-size: 0.8125rem;">
+                            <i class="bi bi-plus me-1"></i>New order
+                        </span>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        @if (_recentOrders.Any())
+        {
+            <div class="card">
+                <div class="card-header">Recent orders</div>
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Order</th>
+                                <th>Items</th>
+                                <th>Total</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var order in _recentOrders.Take(5))
+                            {
+                                <tr style="cursor:pointer" @onclick='() => Nav.NavigateTo($"/my/orders/{order.Id}")'>
+                                    <td><code>@order.Id[..8]</code></td>
+                                    <td>@(order.Items.Count) item@(order.Items.Count != 1 ? "s" : "")</td>
+                                    <td class="font-mono">@order.Total.ToString("C2")</td>
+                                    <td><span class="badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span></td>
+                                    <td class="text-muted">@order.CreatedAt.ToString("MMM d")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private int _orderCount;
+    private int _activeOrders;
+    private int _openTicketsCount;
+    private List<OrderDto> _recentOrders = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                var orders = (await OrderService.GetByUserAsync(userId)).ToList();
+                _orderCount = orders.Count;
+                _activeOrders = orders.Count(o => o.Status == OrderStatus.Active);
+                _recentOrders = orders.OrderByDescending(o => o.CreatedAt).Take(5).ToList();
+
+                var tickets = await TicketService.GetByUserAsync(userId);
+                _openTicketsCount = tickets.Count(t => t.Status != TicketStatus.Closed);
+            }
+        }
+    }
+}

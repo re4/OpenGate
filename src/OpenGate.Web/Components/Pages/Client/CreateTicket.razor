@@ -1,0 +1,120 @@
+@page "/my/tickets/create"
+@attribute [Authorize]
+@inject ITicketService TicketService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>New Ticket - OpenGate</PageTitle>
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/my/tickets">Support</a></li>
+        <li class="breadcrumb-item active">New ticket</li>
+    </ol>
+</nav>
+
+<div class="page-header">
+    <h1>New ticket</h1>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-danger mb-3">@_errorMessage</div>
+        }
+
+        <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="alert alert-danger" />
+
+            <div class="mb-3">
+                <label for="subject" class="form-label">Subject</label>
+                <InputText id="subject" @bind-Value="_model.Subject" class="form-control" placeholder="Brief description of your issue" />
+                <ValidationMessage For="@(() => _model.Subject)" />
+            </div>
+
+            <div class="mb-3">
+                <label for="priority" class="form-label">Priority</label>
+                <InputSelect id="priority" @bind-Value="_model.Priority" class="form-select">
+                    <option value="@TicketPriority.Low">Low</option>
+                    <option value="@TicketPriority.Medium">Medium</option>
+                    <option value="@TicketPriority.High">High</option>
+                    <option value="@TicketPriority.Critical">Critical</option>
+                </InputSelect>
+            </div>
+
+            <div class="mb-3">
+                <label for="message" class="form-label">Message</label>
+                <InputTextArea id="message" @bind-Value="_model.Body" class="form-control" rows="5"
+                               placeholder="Describe your issue in detail..." />
+                <ValidationMessage For="@(() => _model.Body)" />
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary" disabled="@_isSubmitting">
+                    @if (_isSubmitting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    }
+                    Create Ticket
+                </button>
+                <a href="/my/tickets" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private CreateTicketModel _model = new();
+    private string? _errorMessage;
+    private bool _isSubmitting;
+
+    private async Task HandleSubmit()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var userName = authState.User.Identity?.Name ?? "User";
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            _errorMessage = "You must be logged in to create a ticket.";
+            return;
+        }
+
+        _isSubmitting = true;
+        _errorMessage = null;
+
+        try
+        {
+            var dto = new CreateTicketDto
+            {
+                UserId = userId,
+                Subject = _model.Subject!,
+                Priority = _model.Priority,
+                Body = _model.Body ?? ""
+            };
+            await TicketService.CreateAsync(dto);
+            Navigation.NavigateTo("/my/tickets", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private class CreateTicketModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Subject is required")]
+        public string? Subject { get; set; }
+
+        public TicketPriority Priority { get; set; } = TicketPriority.Medium;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Message is required")]
+        public string? Body { get; set; }
+    }
+}

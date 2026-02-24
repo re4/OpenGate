@@ -1,0 +1,188 @@
+@page "/admin/tickets/{Id}"
+@attribute [Authorize(Roles = "Admin")]
+@inject ITicketService TicketService
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<div class="page-header d-flex justify-content-between align-items-start flex-wrap gap-2">
+    <h1>@(_ticket != null ? _ticket.Subject : "Ticket")</h1>
+    <a href="/admin/tickets" class="btn btn-outline-secondary btn-sm">Back</a>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+else if (_ticket == null)
+{
+    <div class="alert alert-warning">Ticket not found.</div>
+}
+else
+{
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span>@_ticket.Subject</span>
+                    <div>
+                        <span class="badge badge-status status-@_ticket.Status.ToString().ToLowerInvariant() me-1">@_ticket.Status</span>
+                        <span class="badge badge-status priority-@_ticket.Priority.ToString().ToLowerInvariant()">@_ticket.Priority</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-3">User</dt>
+                        <dd class="col-sm-9">@(_user?.FullName ?? _user?.Email ?? _ticket.UserId)</dd>
+                        <dt class="col-sm-3">Created</dt>
+                        <dd class="col-sm-9">@_ticket.CreatedAt.ToString("MMM d, yyyy HH:mm")</dd>
+                        @if (_ticket.ClosedAt.HasValue)
+                        {
+                            <dt class="col-sm-3">Closed</dt>
+                            <dd class="col-sm-9">@_ticket.ClosedAt.Value.ToString("MMM d, yyyy HH:mm")</dd>
+                        }
+                    </dl>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Messages</h5>
+                </div>
+                <div class="card-body">
+                    @if (_ticket.Messages.Any())
+                    {
+                        @foreach (var msg in _ticket.Messages.OrderBy(m => m.CreatedAt))
+                        {
+                            <div class="ticket-message @(msg.IsStaff ? "staff" : "")">
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <strong>@msg.SenderName</strong>
+                                    <small class="text-muted">@msg.CreatedAt.ToString("MMM d, HH:mm")</small>
+                                </div>
+                                <div class="small">@msg.Body</div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">No messages yet.</p>
+                    }
+                </div>
+            </div>
+
+            @if (_ticket.Status != TicketStatus.Closed)
+            {
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Reply</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <textarea class="form-control" rows="4" placeholder="Type your reply..." @bind="_reply"></textarea>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-primary" @onclick="SendReply" disabled="@(_sending || string.IsNullOrWhiteSpace(_reply))">
+                                @if (_sending) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                Send
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" @onclick="CloseTicket" disabled="@_sending">
+                                Close ticket
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = string.Empty;
+
+    private TicketDto? _ticket;
+    private ApplicationUser? _user;
+    private string _reply = "";
+    private bool _loading = true;
+    private bool _sending;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _ticket = await TicketService.GetByIdAsync(Id);
+            if (_ticket != null)
+            {
+                _user = await UserManager.FindByIdAsync(_ticket.UserId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SendReply()
+    {
+        if (_ticket == null || string.IsNullOrWhiteSpace(_reply)) return;
+        _sending = true;
+        _error = null;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var currentUser = authState.User;
+            var userId = currentUser.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+            var userName = currentUser.Identity?.Name ?? "Staff";
+
+            await TicketService.AddMessageAsync(Id, new CreateTicketMessageDto
+            {
+                SenderId = userId,
+                SenderName = userName,
+                IsStaff = true,
+                Body = _reply.Trim()
+            });
+            _ticket = await TicketService.GetByIdAsync(Id);
+            _reply = "";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+
+    private async Task CloseTicket()
+    {
+        if (_ticket == null) return;
+        _sending = true;
+        _error = null;
+        try
+        {
+            _ticket = await TicketService.CloseTicketAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+}

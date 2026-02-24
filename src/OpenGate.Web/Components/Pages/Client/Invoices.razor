@@ -1,0 +1,112 @@
+@page "/my/invoices"
+@attribute [Authorize]
+@inject IInvoiceService InvoiceService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>My Invoices - OpenGate</PageTitle>
+
+<div class="page-header">
+    <h1>Invoices</h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+}
+else if (!_invoices.Any())
+{
+    <div class="empty-state">
+        <i class="bi bi-inbox d-block"></i>
+        <h5>No invoices</h5>
+        <p class="mb-0">You don't have any invoices yet.</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Invoice #</th>
+                        <th>Order</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th>Due Date</th>
+                        <th>Paid Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var inv in _invoices)
+                    {
+                        <tr>
+                            <td><span class="font-mono">@inv.InvoiceNumber</span></td>
+                            <td><code class="font-mono">@TruncateId(inv.OrderId)</code></td>
+                            <td><span class="font-mono">@inv.Total.ToString("C")</span></td>
+                            <td>
+                                <span class="badge status-@inv.Status.ToString().ToLowerInvariant()">@inv.Status</span>
+                            </td>
+                            <td>@inv.DueDate.ToString("MMM d, yyyy")</td>
+                            <td>@(inv.PaidAt?.ToString("MMM d, yyyy") ?? "—")</td>
+                            <td>
+                                <a href="/api/invoices/@inv.Id/pdf" target="_blank">PDF</a>
+                                @if (inv.Status != InvoiceStatus.Paid && inv.Status != InvoiceStatus.Cancelled && inv.Status != InvoiceStatus.Refunded)
+                                {
+                                    <span class="mx-1">|</span>
+                                    <a href="/my/invoices/@inv.Id/pay" class="btn btn-sm btn-primary">Pay</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<InvoiceDto> _invoices = new();
+    private bool _loading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInvoicesAsync();
+    }
+
+    private async Task LoadInvoicesAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                _invoices = (await InvoiceService.GetByUserAsync(userId))
+                    .OrderByDescending(i => i.CreatedAt).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string TruncateId(string id) => id.Length > 8 ? id[..8] + "…" : id;
+}

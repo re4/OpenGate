@@ -1,0 +1,94 @@
+@page "/my/invoices/{Id}/pay"
+@attribute [Authorize]
+@inject IInvoiceService InvoiceService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Pay Invoice - OpenGate</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_invoice == null || !_isOwner)
+{
+    <div class="empty-state">
+        <i class="bi bi-shield-x d-block"></i>
+        <h5>Invoice not found</h5>
+        <a href="/my/invoices" class="btn btn-primary mt-3">Back to Invoices</a>
+    </div>
+}
+else if (_invoice.Status == InvoiceStatus.Paid)
+{
+    <div class="alert alert-success">This invoice has already been paid.</div>
+    <a href="/my/invoices" class="btn btn-primary">Back to Invoices</a>
+}
+else
+{
+    <div class="page-header">
+        <h1>Pay invoice</h1>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <p class="mb-2">Amount due: <strong class="font-mono">@_invoice.Total.ToString("C")</strong></p>
+            <p class="text-muted small mb-4">Due date: @_invoice.DueDate.ToString("MMM d, yyyy")</p>
+            <div class="alert alert-info">
+                Payment gateway integration is not yet configured. Please contact support to complete payment.
+            </div>
+            <a href="/my/invoices" class="btn btn-outline-secondary">Back to Invoices</a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = string.Empty;
+
+    private InvoiceDto? _invoice;
+    private bool _loading = true;
+    private bool _isOwner;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInvoiceAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(Id))
+        {
+            await LoadInvoiceAsync();
+        }
+    }
+
+    private async Task LoadInvoiceAsync()
+    {
+        _loading = true;
+        _isOwner = false;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                _loading = false;
+                return;
+            }
+
+            _invoice = await InvoiceService.GetByIdAsync(Id);
+            if (_invoice != null)
+            {
+                _isOwner = _invoice.UserId == userId;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

@@ -1,0 +1,108 @@
+@page "/admin/users"
+@attribute [Authorize(Roles = "Admin")]
+@inject UserManager<ApplicationUser> UserManager
+
+<div class="page-header">
+    <h1>Users</h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+else if (!_users.Any())
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="empty-state">
+                <i class="bi bi-people d-block"></i>
+                <p class="mb-0">No users found</p>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Roles</th>
+                        <th>Created</th>
+                        <th>Last Login</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in _users)
+                    {
+                        var roles = _userRoles.GetValueOrDefault(user.Id.ToString(), new List<string>());
+                        <tr>
+                            <td>@user.FullName</td>
+                            <td>@user.Email</td>
+                            <td>
+                                @if (roles.Any())
+                                {
+                                    @foreach (var role in roles)
+                                    {
+                                        <span class="badge bg-primary me-1">@role</span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                            <td>@user.CreatedAt.ToString("MMM d, yyyy")</td>
+                            <td>@(user.LastLoginAt?.ToString("MMM d, yyyy") ?? "-")</td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-primary" disabled title="Edit coming soon">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ApplicationUser> _users = new();
+    private Dictionary<string, List<string>> _userRoles = new();
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _users = UserManager.Users.OrderByDescending(u => u.CreatedAt).ToList();
+            foreach (var user in _users)
+            {
+                var roles = await UserManager.GetRolesAsync(user);
+                _userRoles[user.Id.ToString()] = roles.ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

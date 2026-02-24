@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>14</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AutoMapper" Version="16.0.0" />
+    <PackageReference Include="MediatR" Version="14.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OpenGate.Domain\OpenGate.Domain.csproj" />
+    <ProjectReference Include="..\OpenGate.Extensions.Abstractions\OpenGate.Extensions.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

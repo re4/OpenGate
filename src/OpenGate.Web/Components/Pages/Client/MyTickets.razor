@@ -1,0 +1,108 @@
+@page "/my/tickets"
+@attribute [Authorize]
+@inject ITicketService TicketService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>My Tickets - OpenGate</PageTitle>
+
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <h1>Support</h1>
+    <a href="/my/tickets/create" class="btn btn-primary">New ticket</a>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+}
+else if (!_tickets.Any())
+{
+    <div class="empty-state">
+        <i class="bi bi-chat-left-dots d-block"></i>
+        <h5>No tickets yet</h5>
+        <p class="mb-3">Create a support ticket if you need assistance.</p>
+        <a href="/my/tickets/create" class="btn btn-primary">New Ticket</a>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>Status</th>
+                        <th>Priority</th>
+                        <th>Created</th>
+                        <th>Last Updated</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var ticket in _tickets)
+                    {
+                        <tr>
+                            <td>@ticket.Subject</td>
+                            <td>
+                                <span class="badge status-@ticket.Status.ToString().ToLowerInvariant()">@ticket.Status</span>
+                            </td>
+                            <td>
+                                <span class="badge status-@ticket.Priority.ToString().ToLowerInvariant()">@ticket.Priority</span>
+                            </td>
+                            <td>@ticket.CreatedAt.ToString("MMM d, yyyy")</td>
+                            <td>@ticket.UpdatedAt.ToString("MMM d, yyyy")</td>
+                            <td>
+                                <a href="/my/tickets/@ticket.Id" class="btn btn-sm btn-outline-primary">View</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<TicketDto> _tickets = new();
+    private bool _loading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTicketsAsync();
+    }
+
+    private async Task LoadTicketsAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                _tickets = (await TicketService.GetByUserAsync(userId))
+                    .OrderByDescending(t => t.UpdatedAt).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+}

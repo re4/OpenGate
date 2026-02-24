@@ -1,0 +1,121 @@
+@page "/checkout"
+@attribute [Authorize]
+@inject CartService CartService
+@inject IOrderService OrderService
+@inject IInvoiceService InvoiceService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Checkout - OpenGate</PageTitle>
+
+<div class="page-header">
+    <h1>Checkout</h1>
+</div>
+
+@if (CartService.Items.Count == 0)
+{
+    <div class="empty-state">
+        <i class="bi bi-cart-x d-block"></i>
+        <h5>Your cart is empty</h5>
+        <a href="/store" class="btn btn-primary mt-3">Continue Shopping</a>
+    </div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert alert-danger mb-3">@_errorMessage</div>
+    }
+
+    <EditForm Model="_model" OnValidSubmit="PlaceOrder">
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Order Notes</h5>
+                        <div class="mb-0">
+                            <label for="notes" class="form-label">Additional notes (optional)</label>
+                            <InputTextArea id="notes" @bind-Value="_model.Notes" class="form-control" rows="3"
+                                           placeholder="Any special instructions..." />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Order Summary</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            @foreach (var item in CartService.Items)
+                            {
+                                <li class="list-group-item d-flex justify-content-between px-0">
+                                    <span>@item.ProductName x @item.Quantity</span>
+                                    <span class="font-mono">@((item.UnitPrice * item.Quantity).ToString("C"))</span>
+                                </li>
+                            }
+                        </ul>
+                        <hr />
+                        <div class="d-flex justify-content-between fw-bold fs-5">
+                            <span>Total</span>
+                            <span class="font-mono">@CartService.Total.ToString("C")</span>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button type="submit" class="btn btn-primary w-100" disabled="@_isSubmitting">
+                            @if (_isSubmitting)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            }
+                            Place Order
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </EditForm>
+}
+
+@code {
+    private CheckoutModel _model = new();
+    private string? _errorMessage;
+    private bool _isSubmitting;
+
+    private async Task PlaceOrder()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            _errorMessage = "You must be logged in to place an order.";
+            return;
+        }
+
+        _isSubmitting = true;
+        _errorMessage = null;
+
+        try
+        {
+            var items = CartService.Items.ToList();
+            var order = await OrderService.CreateFromCartAsync(userId, items, _model.Notes);
+            var invoice = await InvoiceService.GenerateForOrderAsync(order.Id);
+            CartService.Clear();
+            Navigation.NavigateTo($"/my/orders/{order.Id}", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private class CheckoutModel
+    {
+        public string? Notes { get; set; }
+    }
+}

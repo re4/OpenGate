@@ -1,0 +1,118 @@
+@page "/my/orders"
+@attribute [Authorize]
+@inject IOrderService OrderService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>My Orders - OpenGate</PageTitle>
+
+<div class="page-header">
+    <h1>Orders</h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+}
+else if (!_orders.Any())
+{
+    <div class="empty-state">
+        <i class="bi bi-inbox d-block"></i>
+        <h5>No orders yet</h5>
+        <p class="mb-3">You haven't placed any orders. Browse our store to get started.</p>
+        <a href="/store" class="btn btn-primary">Browse Store</a>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Order ID</th>
+                        <th>Items</th>
+                        <th>Total</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Next Due</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var order in _orders)
+                    {
+                        <tr>
+                            <td><code class="font-mono">@TruncateId(order.Id)</code></td>
+                            <td>@GetItemsSummary(order)</td>
+                            <td><span class="font-mono">@order.Total.ToString("C")</span></td>
+                            <td>
+                                <span class="badge status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span>
+                            </td>
+                            <td>@order.CreatedAt.ToString("MMM d, yyyy")</td>
+                            <td>@(order.NextDueDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                            <td>
+                                <a href="/my/orders/@order.Id" class="btn btn-sm btn-outline-primary">View</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<OrderDto> _orders = new();
+    private bool _loading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOrdersAsync();
+    }
+
+    private async Task LoadOrdersAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                _orders = (await OrderService.GetByUserAsync(userId)).OrderByDescending(o => o.CreatedAt).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string TruncateId(string id) => id.Length > 8 ? id[..8] + "…" : id;
+
+    private static string GetItemsSummary(OrderDto order)
+    {
+        var count = order.Items.Sum(i => i.Quantity);
+        var names = order.Items.Take(2).Select(i => i.ProductName).ToList();
+        var summary = string.Join(", ", names);
+        if (order.Items.Count > 2) summary += $" +{order.Items.Count - 2} more";
+        return $"{count} item(s): {summary}";
+    }
+
+}

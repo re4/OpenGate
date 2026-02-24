@@ -1,0 +1,117 @@
+@page "/admin/tickets"
+@attribute [Authorize(Roles = "Admin")]
+@inject ITicketService TicketService
+@inject UserManager<ApplicationUser> UserManager
+
+<div class="page-header">
+    <h1>Tickets</h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+else
+{
+    <div class="filter-bar">
+        <button type="button" class="filter-btn @(string.IsNullOrEmpty(_statusFilterStr) ? "active" : "")"
+                @onclick='() => _statusFilterStr = ""'>
+            All
+        </button>
+        @foreach (TicketStatus s in Enum.GetValues(typeof(TicketStatus)))
+        {
+            var statusVal = s.ToString();
+            <button type="button" class="filter-btn @(_statusFilterStr == statusVal ? "active" : "")"
+                    @onclick='() => _statusFilterStr = statusVal'>
+                @s
+            </button>
+        }
+    </div>
+
+    @if (!_filteredTickets.Any())
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="empty-state">
+                    <i class="bi bi-chat-dots d-block"></i>
+                    <p class="mb-0">No tickets found</p>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Subject</th>
+                            <th>User</th>
+                            <th>Status</th>
+                            <th>Priority</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var ticket in _filteredTickets)
+                        {
+                            var user = _users.FirstOrDefault(u => u.Id.ToString() == ticket.UserId);
+                            <tr>
+                                <td><span class="font-mono">@(ticket.Id.Length > 8 ? ticket.Id[..8] + "..." : ticket.Id)</span></td>
+                                <td>@ticket.Subject</td>
+                                <td>@(user?.FullName ?? user?.Email ?? ticket.UserId)</td>
+                                <td><span class="badge badge-status status-@ticket.Status.ToString().ToLowerInvariant()">@ticket.Status</span></td>
+                                <td><span class="badge badge-status priority-@ticket.Priority.ToString().ToLowerInvariant()">@ticket.Priority</span></td>
+                                <td>@ticket.CreatedAt.ToString("MMM d, yyyy")</td>
+                                <td>
+                                    <a href="/admin/tickets/@ticket.Id" class="btn btn-sm btn-outline-primary">View</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<TicketDto> _tickets = new();
+    private List<ApplicationUser> _users = new();
+    private string _statusFilterStr = "";
+    private bool _loading = true;
+    private string? _error;
+
+    private IEnumerable<TicketDto> _filteredTickets =>
+        !string.IsNullOrEmpty(_statusFilterStr) && Enum.TryParse<TicketStatus>(_statusFilterStr, out var status)
+            ? _tickets.Where(t => t.Status == status)
+            : _tickets;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _tickets = (await TicketService.GetAllAsync()).OrderByDescending(t => t.CreatedAt).ToList();
+            _users = UserManager.Users.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
