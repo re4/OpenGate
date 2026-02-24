@@ -7,6 +7,14 @@ public interface IServerProvisioner : IOpenGateExtension
     Task<ProvisionResult> UnsuspendServerAsync(string externalId);
     Task<ProvisionResult> TerminateServerAsync(string externalId);
     Task<ServerStatus> GetServerStatusAsync(string externalId);
+
+    Task<ProvisionResult> StartServerAsync(string externalId);
+    Task<ProvisionResult> StopServerAsync(string externalId);
+    Task<ProvisionResult> RestartServerAsync(string externalId);
+    Task<ProvisionResult> ReinstallServerAsync(string externalId, ReinstallOptions options);
+    Task<ProvisionResult> CreateBackupAsync(string externalId);
+    Task<IEnumerable<BackupInfo>> ListBackupsAsync(string externalId);
+    Task<ProvisionResult> RestoreBackupAsync(string externalId, string backupId);
 }
 
 public class ProvisionRequest
@@ -33,4 +41,19 @@ public class ServerStatus
     public bool IsSuspended { get; set; }
     public string? StatusMessage { get; set; }
     public Dictionary<string, object> Resources { get; set; } = new();
+}
+
+public class ReinstallOptions
+{
+    public string OperatingSystemId { get; set; } = string.Empty;
+    public string? Hostname { get; set; }
+}
+
+public class BackupInfo
+{
+    public string Id { get; set; } = string.Empty;
+    public string? Name { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public long? SizeBytes { get; set; }
+    public string? Status { get; set; }
 }

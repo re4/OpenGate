@@ -66,44 +66,14 @@ else
                 {
                     @if (_activeTab == group.Key)
                     {
-                        <EditForm Model="@GetGroupModel(group.Key)" OnValidSubmit="() => SaveGroup(group.Key)">
-                            @foreach (var setting in group)
-                            {
-                                var key = setting.Key;
-                                <div class="mb-3">
-                                    <label class="form-label fw-medium">@FormatLabel(key)</label>
-                                    @if (!string.IsNullOrEmpty(setting.Description))
-                                    {
-                                        <small class="text-muted d-block mb-1">@setting.Description</small>
-                                    }
-                                    @if (IsPasswordField(key))
-                                    {
-                                        <input type="password" class="form-control" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
-                                               @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
-                                    }
-                                    else if (IsBooleanField(key))
-                                    {
-                                        <div class="form-check form-switch mt-1">
-                                            <input type="checkbox" class="form-check-input" checked="@(GetBoolValue(key, setting.Value))"
-                                                   @onchange="@(e => _groupValues[key] = (e.Value is true ? "true" : "false"))" />
-                                            <label class="form-check-label text-muted">@(GetBoolValue(key, setting.Value) ? "Enabled" : "Disabled")</label>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <input type="text" class="form-control" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
-                                               @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
-                                    }
-                                </div>
-                            }
-                            <button type="submit" class="btn btn-primary" disabled="@_savingGroups.Contains(group.Key)">
-                                @if (_savingGroups.Contains(group.Key))
-                                {
-                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                }
-                                Save
-                            </button>
-                        </EditForm>
+                        @if (group.Key == "Provisioning")
+                        {
+                            @RenderProvisioningTab(group.ToList())
+                        }
+                        else
+                        {
+                            @RenderSettingsForm(group.Key, group.ToList())
+                        }
                     }
                 }
             </div>
@@ -116,9 +86,85 @@ else
     private Dictionary<string, string> _groupValues = new();
     private HashSet<string> _savingGroups = new();
     private string _activeTab = "General";
+    private string _activeProvisionerTab = "Pterodactyl";
     private bool _loading = true;
     private string? _error;
     private string? _successMessage;
+
+    private static readonly Dictionary<string, (string Label, string Icon)> ProvisionerPrefixes = new()
+    {
+        ["Pterodactyl"] = ("Pterodactyl", "bi-controller"),
+        ["VirtFusion"] = ("VirtFusion", "bi-hdd-rack")
+    };
+
+    private RenderFragment RenderProvisioningTab(List<SettingDto> settings) => __builder =>
+    {
+        var provisioners = ProvisionerPrefixes.Keys
+            .Where(prefix => settings.Any(s => s.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (!provisioners.Contains(_activeProvisionerTab) && provisioners.Any())
+            _activeProvisionerTab = provisioners.First();
+
+        <ul class="nav nav-pills mb-3">
+            @foreach (var prov in provisioners)
+            {
+                var info = ProvisionerPrefixes[prov];
+                <li class="nav-item">
+                    <button class="nav-link @(_activeProvisionerTab == prov ? "active" : "")"
+                            type="button"
+                            @onclick="() => _activeProvisionerTab = prov">
+                        <i class="bi @info.Icon me-1"></i> @info.Label
+                    </button>
+                </li>
+            }
+        </ul>
+
+        var filtered = settings.Where(s => s.Key.StartsWith(_activeProvisionerTab, StringComparison.OrdinalIgnoreCase)).ToList();
+        @RenderSettingsForm("Provisioning", filtered)
+    };
+
+    private RenderFragment RenderSettingsForm(string groupKey, List<SettingDto> settings) => __builder =>
+    {
+        <EditForm Model="@GetGroupModel(groupKey)" OnValidSubmit="() => SaveSettings(groupKey, settings)">
+            @foreach (var setting in settings)
+            {
+                var key = setting.Key;
+                <div class="mb-3">
+                    <label class="form-label fw-medium">@FormatLabel(key)</label>
+                    @if (!string.IsNullOrEmpty(setting.Description))
+                    {
+                        <small class="text-muted d-block mb-1">@setting.Description</small>
+                    }
+                    @if (IsPasswordField(key))
+                    {
+                        <input type="password" class="form-control" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
+                               @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
+                    }
+                    else if (IsBooleanField(key))
+                    {
+                        <div class="form-check form-switch mt-1">
+                            <input type="checkbox" class="form-check-input" checked="@(GetBoolValue(key, setting.Value))"
+                                   @onchange="@(e => _groupValues[key] = (e.Value is true ? "true" : "false"))" />
+                            <label class="form-check-label text-muted">@(GetBoolValue(key, setting.Value) ? "Enabled" : "Disabled")</label>
+                        </div>
+                    }
+                    else
+                    {
+                        <input type="text" class="form-control" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
+                               @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
+                    }
+                </div>
+            }
+            <button type="submit" class="btn btn-primary" disabled="@_savingGroups.Contains(groupKey)">
+                @if (_savingGroups.Contains(groupKey))
+                {
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                }
+                Save
+            </button>
+        </EditForm>
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -149,22 +195,21 @@ else
 
     private object GetGroupModel(string group) => new { };
 
-    private async Task SaveGroup(string group)
+    private async Task SaveSettings(string groupKey, List<SettingDto> settings)
     {
-        _savingGroups.Add(group);
+        _savingGroups.Add(groupKey);
         _error = null;
         _successMessage = null;
         try
         {
-            var groupSettings = _settings.Where(s => (string.IsNullOrEmpty(s.Group) ? "General" : s.Group) == group).ToList();
-            foreach (var setting in groupSettings)
+            foreach (var setting in settings)
             {
                 if (_groupValues.TryGetValue(setting.Key, out var value))
                 {
                     await SettingService.SetValueAsync(setting.Key, value);
                 }
             }
-            _successMessage = $"{group} settings saved.";
+            _successMessage = $"Settings saved.";
         }
         catch (Exception ex)
         {
@@ -172,7 +217,7 @@ else
         }
         finally
         {
-            _savingGroups.Remove(group);
+            _savingGroups.Remove(groupKey);
         }
     }
 
@@ -195,6 +240,7 @@ else
     private static bool IsPasswordField(string key) =>
         key.Contains("Secret", StringComparison.OrdinalIgnoreCase) ||
         key.Contains("Password", StringComparison.OrdinalIgnoreCase) ||
+        key.Contains("ApiToken", StringComparison.OrdinalIgnoreCase) ||
         (key.Contains("Key", StringComparison.OrdinalIgnoreCase) && key.Contains("Api", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsBooleanField(string key) =>

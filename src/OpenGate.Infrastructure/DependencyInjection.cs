@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ISettingService, SettingService>();
         services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IServerManagementService, ServerManagementService>();
 
         services.AddAutoMapper(cfg => { }, typeof(MappingProfile).Assembly);
 

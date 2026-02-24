@@ -1,0 +1,381 @@
+@page "/my/orders/{Id}/server"
+@attribute [Authorize]
+@inject IServerManagementService ServerService
+@inject IOrderService OrderService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@using OpenGate.Extensions.Abstractions
+
+<PageTitle>Server Management - OpenGate</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_order == null || !_isOwner)
+{
+    <div class="empty-state">
+        <i class="bi bi-shield-x d-block"></i>
+        <h5>Server not found</h5>
+        <p class="mb-3">This order does not exist, has no server, or you don't have access to it.</p>
+        <a href="/my/orders" class="btn btn-primary">Back to My Orders</a>
+    </div>
+}
+else
+{
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/my/orders">Orders</a></li>
+            <li class="breadcrumb-item"><a href="/my/orders/@Id">Order @Id[..Math.Min(8, Id.Length)]</a></li>
+            <li class="breadcrumb-item active">Server</li>
+        </ol>
+    </nav>
+
+    <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <h1>Server Management</h1>
+        @if (_status != null)
+        {
+            <div class="d-flex gap-2 align-items-center">
+                @if (_status.IsSuspended)
+                {
+                    <span class="badge bg-warning text-dark">Suspended</span>
+                }
+                else if (_status.IsOnline)
+                {
+                    <span class="badge bg-success">Online</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary">Offline</span>
+                }
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="alert @(_messageIsError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+            @_message
+            <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+        </div>
+    }
+
+    <div class="row">
+        <!-- Power Controls -->
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Power Controls</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button class="btn btn-success" @onclick="StartServer" disabled="@_actionInProgress">
+                            @if (_currentAction == "start") { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            <i class="bi bi-play-fill me-1"></i> Start
+                        </button>
+                        <button class="btn btn-danger" @onclick="StopServer" disabled="@_actionInProgress">
+                            @if (_currentAction == "stop") { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            <i class="bi bi-stop-fill me-1"></i> Stop
+                        </button>
+                        <button class="btn btn-warning" @onclick="RestartServer" disabled="@_actionInProgress">
+                            @if (_currentAction == "restart") { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            <i class="bi bi-arrow-clockwise me-1"></i> Restart
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reinstall -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Reinstall OS</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3">
+                        Reinstalling will wipe all data on the server and install a fresh operating system. This action cannot be undone.
+                    </p>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-5">
+                            <label class="form-label">OS Template ID</label>
+                            <input type="text" class="form-control" @bind="_reinstallOsId" placeholder="e.g. 1" />
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Hostname (optional)</label>
+                            <input type="text" class="form-control" @bind="_reinstallHostname" placeholder="e.g. myserver.vm" />
+                        </div>
+                        <div class="col-md-2">
+                            @if (!_showReinstallConfirm)
+                            {
+                                <button class="btn btn-outline-danger w-100" @onclick="() => _showReinstallConfirm = true" disabled="@_actionInProgress">
+                                    Reinstall
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-danger w-100" @onclick="ReinstallServer" disabled="@_actionInProgress">
+                                    @if (_currentAction == "reinstall") { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                    Confirm
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    @if (_showReinstallConfirm)
+                    {
+                        <div class="alert alert-danger mt-3 mb-0">
+                            <strong>Are you sure?</strong> All data will be permanently erased.
+                            <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="() => _showReinstallConfirm = false">Cancel</button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Backups -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Backups</h5>
+                    <button class="btn btn-sm btn-primary" @onclick="CreateBackup" disabled="@_actionInProgress">
+                        @if (_currentAction == "backup") { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Create Backup
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    @if (_backups.Any())
+                    {
+                        <table class="table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Created</th>
+                                    <th>Size</th>
+                                    <th>Status</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var backup in _backups)
+                                {
+                                    <tr>
+                                        <td><code class="font-mono">@backup.Id</code></td>
+                                        <td>@(backup.Name ?? "—")</td>
+                                        <td>@backup.CreatedAt.ToString("MMM d, yyyy HH:mm")</td>
+                                        <td>@FormatSize(backup.SizeBytes)</td>
+                                        <td>
+                                            <span class="badge bg-secondary">@(backup.Status ?? "unknown")</span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => RestoreBackup(backup.Id)" disabled="@_actionInProgress">
+                                                Restore
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <div class="text-center text-muted py-4">No backups found.</div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Server Info Sidebar -->
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Server Info</h5>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshStatus" disabled="@_actionInProgress">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+                <div class="card-body">
+                    @if (_status != null)
+                    {
+                        <dl class="mb-0">
+                            <dt>Status</dt>
+                            <dd>@(_status.StatusMessage ?? "Unknown")</dd>
+
+                            <dt>Provisioning ID</dt>
+                            <dd><code class="font-mono">@_order.ProvisioningId</code></dd>
+
+                            @foreach (var res in _status.Resources)
+                            {
+                                <dt>@res.Key</dt>
+                                <dd>@res.Value</dd>
+                            }
+                        </dl>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">Unable to retrieve server status.</p>
+                    }
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Order</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="mb-0">
+                        <dt>Order ID</dt>
+                        <dd><a href="/my/orders/@Id"><code class="font-mono">@Id</code></a></dd>
+                        <dt>Product</dt>
+                        <dd>@string.Join(", ", _order.Items.Select(i => i.ProductName))</dd>
+                        <dt>Order Status</dt>
+                        <dd><span class="badge status-@_order.Status.ToString().ToLowerInvariant()">@_order.Status</span></dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = string.Empty;
+
+    private OrderDto? _order;
+    private ServerStatus? _status;
+    private List<BackupInfo> _backups = new();
+    private bool _loading = true;
+    private bool _isOwner;
+    private string? _userId;
+
+    private string? _message;
+    private bool _messageIsError;
+    private bool _actionInProgress;
+    private string? _currentAction;
+
+    private string _reinstallOsId = "1";
+    private string? _reinstallHostname;
+    private bool _showReinstallConfirm;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(_userId)) { _loading = false; return; }
+
+            _order = await OrderService.GetByIdAsync(Id);
+            if (_order == null || _order.UserId != _userId || string.IsNullOrEmpty(_order.ProvisioningId))
+            {
+                _isOwner = false;
+                _loading = false;
+                return;
+            }
+
+            _isOwner = true;
+            _status = await ServerService.GetStatusAsync(Id, _userId);
+            _backups = (await ServerService.ListBackupsAsync(Id, _userId)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+            _messageIsError = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RefreshStatus()
+    {
+        if (_userId == null) return;
+        _currentAction = "refresh";
+        _actionInProgress = true;
+        try
+        {
+            _status = await ServerService.GetStatusAsync(Id, _userId);
+            _backups = (await ServerService.ListBackupsAsync(Id, _userId)).ToList();
+        }
+        finally
+        {
+            _actionInProgress = false;
+            _currentAction = null;
+        }
+    }
+
+    private Task StartServer() => RunActionAsync("start", () => ServerService.StartAsync(Id, _userId!));
+    private Task StopServer() => RunActionAsync("stop", () => ServerService.StopAsync(Id, _userId!));
+    private Task RestartServer() => RunActionAsync("restart", () => ServerService.RestartAsync(Id, _userId!));
+
+    private async Task ReinstallServer()
+    {
+        if (string.IsNullOrEmpty(_reinstallOsId)) return;
+        _showReinstallConfirm = false;
+        await RunActionAsync("reinstall", () => ServerService.ReinstallAsync(Id, _userId!, new ReinstallOptions
+        {
+            OperatingSystemId = _reinstallOsId,
+            Hostname = _reinstallHostname
+        }));
+    }
+
+    private async Task CreateBackup()
+    {
+        await RunActionAsync("backup", () => ServerService.CreateBackupAsync(Id, _userId!));
+        if (_userId != null)
+            _backups = (await ServerService.ListBackupsAsync(Id, _userId)).ToList();
+    }
+
+    private async Task RestoreBackup(string backupId)
+    {
+        await RunActionAsync("restore", () => ServerService.RestoreBackupAsync(Id, _userId!, backupId));
+    }
+
+    private async Task RunActionAsync(string actionName, Func<Task<ProvisionResult>> action)
+    {
+        _currentAction = actionName;
+        _actionInProgress = true;
+        _message = null;
+        try
+        {
+            var result = await action();
+            _message = result.Success
+                ? $"{char.ToUpper(actionName[0])}{actionName[1..]} completed successfully."
+                : result.ErrorMessage ?? "An unknown error occurred.";
+            _messageIsError = !result.Success;
+
+            if (result.Success && _userId != null)
+                _status = await ServerService.GetStatusAsync(Id, _userId);
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+            _messageIsError = true;
+        }
+        finally
+        {
+            _actionInProgress = false;
+            _currentAction = null;
+        }
+    }
+
+    private static string FormatSize(long? bytes)
+    {
+        if (bytes == null) return "—";
+        double size = bytes.Value;
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        var unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+        return $"{size:F1} {units[unitIndex]}";
+    }
+}

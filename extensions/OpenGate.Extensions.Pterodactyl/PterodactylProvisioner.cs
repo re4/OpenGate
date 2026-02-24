@@ -361,6 +361,89 @@ public class PterodactylProvisioner : IServerProvisioner
         }
     }
 
+    public async Task<ProvisionResult> StartServerAsync(string externalId)
+    {
+        return await SendPowerSignalAsync(externalId, "start");
+    }
+
+    public async Task<ProvisionResult> StopServerAsync(string externalId)
+    {
+        return await SendPowerSignalAsync(externalId, "stop");
+    }
+
+    public async Task<ProvisionResult> RestartServerAsync(string externalId)
+    {
+        return await SendPowerSignalAsync(externalId, "restart");
+    }
+
+    public Task<ProvisionResult> ReinstallServerAsync(string externalId, ReinstallOptions options)
+    {
+        return Task.FromResult(new ProvisionResult
+        {
+            Success = false,
+            ErrorMessage = "Reinstall is not yet supported for Pterodactyl."
+        });
+    }
+
+    public Task<ProvisionResult> CreateBackupAsync(string externalId)
+    {
+        return Task.FromResult(new ProvisionResult
+        {
+            Success = false,
+            ErrorMessage = "Backups are not yet supported for Pterodactyl."
+        });
+    }
+
+    public Task<IEnumerable<BackupInfo>> ListBackupsAsync(string externalId)
+    {
+        return Task.FromResult(Enumerable.Empty<BackupInfo>());
+    }
+
+    public Task<ProvisionResult> RestoreBackupAsync(string externalId, string backupId)
+    {
+        return Task.FromResult(new ProvisionResult
+        {
+            Success = false,
+            ErrorMessage = "Backup restore is not yet supported for Pterodactyl."
+        });
+    }
+
+    private async Task<ProvisionResult> SendPowerSignalAsync(string externalId, string signal)
+    {
+        try
+        {
+            var serverId = await ResolveServerIdAsync(externalId);
+            if (string.IsNullOrEmpty(serverId))
+            {
+                return new ProvisionResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Server not found: {externalId}"
+                };
+            }
+
+            var json = JsonSerializer.Serialize(new { signal });
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync($"/api/client/servers/{serverId}/power", content);
+            var body = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new ProvisionResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Pterodactyl power error ({(int)response.StatusCode}): {body}"
+                };
+            }
+
+            return new ProvisionResult { Success = true, ExternalId = externalId };
+        }
+        catch (Exception ex)
+        {
+            return new ProvisionResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
     private static int GetOptionAsInt(Dictionary<string, string> options, string key, int defaultValue)
     {
         if (options.TryGetValue(key, out var value) && int.TryParse(value, out var result))

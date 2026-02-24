@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Identity;
 using OpenGate.Application.Interfaces;
 using OpenGate.Domain.Entities;
 using OpenGate.Extensions.Abstractions;
+using OpenGate.Extensions.Pterodactyl;
+using OpenGate.Extensions.VirtFusion;
 using OpenGate.Infrastructure;
 using OpenGate.Web.Components;
 using OpenGate.Web.Services;
@@ -46,6 +48,9 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
+
+builder.Services.AddScoped<IServerProvisioner, VirtFusionProvisioner>();
+builder.Services.AddScoped<IServerProvisioner, PterodactylProvisioner>();
 
 var app = builder.Build();
 

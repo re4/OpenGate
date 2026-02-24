@@ -47,8 +47,7 @@ public static class SeedData
     private static async Task SeedSettingsAsync(ISettingRepository repository)
     {
         var existing = await repository.GetAllAsync();
-        if (existing.Any())
-            return;
+        var existingKeys = new HashSet<string>(existing.Select(s => s.Key), StringComparer.OrdinalIgnoreCase);
 
         var defaults = new List<Setting>
         {
@@ -81,15 +80,26 @@ public static class SeedData
             new() { Key = "PayPalClientSecret", Value = "", Description = "PayPal REST API client secret", Group = "Payment" },
             new() { Key = "PayPalSandbox", Value = "true", Description = "Use PayPal sandbox environment", Group = "Payment" },
 
-            // Provisioning
+            // Provisioning - Pterodactyl
             new() { Key = "PterodactylEnabled", Value = "false", Description = "Enable Pterodactyl server provisioning", Group = "Provisioning" },
             new() { Key = "PterodactylUrl", Value = "", Description = "Pterodactyl panel URL (e.g. https://panel.example.com)", Group = "Provisioning" },
             new() { Key = "PterodactylApiKey", Value = "", Description = "Pterodactyl application API key", Group = "Provisioning" },
+
+            // Provisioning - VirtFusion
+            new() { Key = "VirtFusionEnabled", Value = "false", Description = "Enable VirtFusion server provisioning", Group = "Provisioning" },
+            new() { Key = "VirtFusionApiUrl", Value = "", Description = "VirtFusion API URL (e.g. https://virtfusion.example.com/api/v1)", Group = "Provisioning" },
+            new() { Key = "VirtFusionApiToken", Value = "", Description = "VirtFusion API bearer token", Group = "Provisioning" },
+            new() { Key = "VirtFusionDefaultOperatingSystemId", Value = "1", Description = "Default OS template ID for new servers", Group = "Provisioning" },
+            new() { Key = "VirtFusionDefaultHypervisorGroupId", Value = "1", Description = "Default hypervisor group ID", Group = "Provisioning" },
+            new() { Key = "VirtFusionDefaultPackageId", Value = "1", Description = "Default resource package ID", Group = "Provisioning" },
         };
 
         foreach (var setting in defaults)
         {
-            await repository.CreateAsync(setting);
+            if (!existingKeys.Contains(setting.Key))
+            {
+                await repository.CreateAsync(setting);
+            }
         }
     }
 }

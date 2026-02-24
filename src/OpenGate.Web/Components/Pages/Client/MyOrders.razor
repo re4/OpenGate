@@ -60,7 +60,15 @@ else
                             <td>@order.CreatedAt.ToString("MMM d, yyyy")</td>
                             <td>@(order.NextDueDate?.ToString("MMM d, yyyy") ?? "—")</td>
                             <td>
-                                <a href="/my/orders/@order.Id" class="btn btn-sm btn-outline-primary">View</a>
+                                <div class="d-flex gap-1">
+                                    <a href="/my/orders/@order.Id" class="btn btn-sm btn-outline-primary">View</a>
+                                    @if (!string.IsNullOrEmpty(order.ProvisioningId) && order.Status == OrderStatus.Active)
+                                    {
+                                        <a href="/my/orders/@order.Id/server" class="btn btn-sm btn-outline-secondary" title="Manage Server">
+                                            <i class="bi bi-hdd-rack"></i>
+                                        </a>
+                                    }
+                                </div>
                             </td>
                         </tr>
                     }
