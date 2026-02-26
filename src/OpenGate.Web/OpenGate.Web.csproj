@@ -15,5 +15,6 @@
     <ProjectReference Include="..\OpenGate.Extensions.Abstractions\OpenGate.Extensions.Abstractions.csproj" />
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.VirtFusion\OpenGate.Extensions.VirtFusion.csproj" />
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Pterodactyl\OpenGate.Extensions.Pterodactyl.csproj" />
+    <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Proxmox\OpenGate.Extensions.Proxmox.csproj" />
   </ItemGroup>
 </Project>

@@ -85,6 +85,18 @@ public static class SeedData
             new() { Key = "PterodactylUrl", Value = "", Description = "Pterodactyl panel URL (e.g. https://panel.example.com)", Group = "Provisioning" },
             new() { Key = "PterodactylApiKey", Value = "", Description = "Pterodactyl application API key", Group = "Provisioning" },
 
+            // Provisioning - Proxmox
+            new() { Key = "ProxmoxEnabled", Value = "false", Description = "Enable Proxmox VE server provisioning", Group = "Provisioning" },
+            new() { Key = "ProxmoxApiUrl", Value = "", Description = "Proxmox API URL (e.g. https://proxmox.example.com:8006/api2/json)", Group = "Provisioning" },
+            new() { Key = "ProxmoxTokenId", Value = "", Description = "API token ID (e.g. user@pam!tokenname)", Group = "Provisioning" },
+            new() { Key = "ProxmoxTokenSecret", Value = "", Description = "API token secret (UUID)", Group = "Provisioning" },
+            new() { Key = "ProxmoxDefaultNode", Value = "pve", Description = "Default Proxmox node name", Group = "Provisioning" },
+            new() { Key = "ProxmoxDefaultStorage", Value = "local", Description = "Default storage for backups and disks", Group = "Provisioning" },
+            new() { Key = "ProxmoxDefaultTemplateId", Value = "", Description = "Default VM template VMID to clone from", Group = "Provisioning" },
+            new() { Key = "ProxmoxDefaultMemory", Value = "2048", Description = "Default memory (MB) for new VMs", Group = "Provisioning" },
+            new() { Key = "ProxmoxDefaultCores", Value = "1", Description = "Default CPU cores for new VMs", Group = "Provisioning" },
+            new() { Key = "ProxmoxDefaultDisk", Value = "32", Description = "Default disk size (GB) for new VMs", Group = "Provisioning" },
+
             // Provisioning - VirtFusion
             new() { Key = "VirtFusionEnabled", Value = "false", Description = "Enable VirtFusion server provisioning", Group = "Provisioning" },
             new() { Key = "VirtFusionApiUrl", Value = "", Description = "VirtFusion API URL (e.g. https://virtfusion.example.com/api/v1)", Group = "Provisioning" },
