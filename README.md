@@ -10,7 +10,7 @@ An open-source billing and client management platform for hosting companies, bui
 - **Client Storefront** - Browse, configure, and order products with a shopping cart
 - **Order Management** - Full lifecycle: pending, active, suspended, cancelled, terminated
 - **Invoicing** - Auto-generated invoices with PDF export (QuestPDF)
-- **Payment Gateways** - Stripe and PayPal integrations via extension system
+- **Payment Gateways** - Stripe, PayPal, Heleket, and Cryptomus integrations via extension system
 - **Server Provisioning** - Pterodactyl, Proxmox VE, and VirtFusion integrations for automated server management
 - **Server Management** - Customer-facing power controls (start/stop/restart), OS reinstall, and backup management
 - **Support Tickets** - Client ticket system with priority levels and staff replies
@@ -30,7 +30,7 @@ An open-source billing and client management platform for hosting companies, bui
 | Auth | ASP.NET Identity + MongoDbCore |
 | PDF | QuestPDF 2026.2 |
 | CSS | Bootstrap 5 + Bootstrap Icons |
-| Payments | Stripe.net 50.x, PayPal REST API v2 |
+| Payments | Stripe.net 50.x, PayPal REST API v2, Heleket API, Cryptomus API |
 | Provisioning | Pterodactyl Panel API, Proxmox VE API, VirtFusion API |
 | Platform | x64 only |
 
@@ -47,6 +47,8 @@ OpenGate/
   extensions/
     OpenGate.Extensions.Stripe/       # Stripe payment gateway
     OpenGate.Extensions.PayPal/       # PayPal payment gateway
+    OpenGate.Extensions.Heleket/      # Heleket crypto payment gateway
+    OpenGate.Extensions.Cryptomus/    # Cryptomus crypto payment gateway
     OpenGate.Extensions.Pterodactyl/  # Pterodactyl server provisioner
     OpenGate.Extensions.Proxmox/      # Proxmox VE server provisioner
     OpenGate.Extensions.VirtFusion/   # VirtFusion server provisioner
@@ -105,6 +107,14 @@ Configure payment gateways in the Admin Settings panel (`/admin/settings`):
 - Client ID
 - Client Secret
 - Sandbox mode (true/false)
+
+**Heleket:**
+- Merchant ID (UUID)
+- API Key
+
+**Cryptomus:**
+- Merchant ID (UUID)
+- API Key
 
 ### Server Provisioning
 
