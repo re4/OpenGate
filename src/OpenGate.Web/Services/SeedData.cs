@@ -80,6 +80,16 @@ public static class SeedData
             new() { Key = "PayPalClientSecret", Value = "", Description = "PayPal REST API client secret", Group = "Payment" },
             new() { Key = "PayPalSandbox", Value = "true", Description = "Use PayPal sandbox environment", Group = "Payment" },
 
+            // Payment - Heleket
+            new() { Key = "HeleketEnabled", Value = "false", Description = "Enable Heleket cryptocurrency payment gateway", Group = "Payment" },
+            new() { Key = "HeleketMerchantId", Value = "", Description = "Heleket merchant UUID", Group = "Payment" },
+            new() { Key = "HeleketApiKey", Value = "", Description = "Heleket API key for signing requests", Group = "Payment" },
+
+            // Payment - Cryptomus
+            new() { Key = "CryptomusEnabled", Value = "false", Description = "Enable Cryptomus cryptocurrency payment gateway", Group = "Payment" },
+            new() { Key = "CryptomusMerchantId", Value = "", Description = "Cryptomus merchant UUID", Group = "Payment" },
+            new() { Key = "CryptomusApiKey", Value = "", Description = "Cryptomus API payment key for signing requests", Group = "Payment" },
+
             // Provisioning - Pterodactyl
             new() { Key = "PterodactylEnabled", Value = "false", Description = "Enable Pterodactyl server provisioning", Group = "Provisioning" },
             new() { Key = "PterodactylUrl", Value = "", Description = "Pterodactyl panel URL (e.g. https://panel.example.com)", Group = "Provisioning" },

@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Identity;
 using OpenGate.Application.Interfaces;
 using OpenGate.Domain.Entities;
 using OpenGate.Extensions.Abstractions;
+using OpenGate.Extensions.Cryptomus;
+using OpenGate.Extensions.Heleket;
 using OpenGate.Extensions.Proxmox;
 using OpenGate.Extensions.Pterodactyl;
 using OpenGate.Extensions.VirtFusion;
@@ -53,6 +55,9 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<IServerProvisioner, VirtFusionProvisioner>();
 builder.Services.AddScoped<IServerProvisioner, PterodactylProvisioner>();
 builder.Services.AddScoped<IServerProvisioner, ProxmoxProvisioner>();
+
+builder.Services.AddScoped<IPaymentGateway, HeleketGateway>();
+builder.Services.AddScoped<IPaymentGateway, CryptomusGateway>();
 
 var app = builder.Build();
 

@@ -16,5 +16,7 @@
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.VirtFusion\OpenGate.Extensions.VirtFusion.csproj" />
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Pterodactyl\OpenGate.Extensions.Pterodactyl.csproj" />
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Proxmox\OpenGate.Extensions.Proxmox.csproj" />
+    <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Heleket\OpenGate.Extensions.Heleket.csproj" />
+    <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Cryptomus\OpenGate.Extensions.Cryptomus.csproj" />
   </ItemGroup>
 </Project>

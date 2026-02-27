@@ -66,9 +66,13 @@ else
                 {
                     @if (_activeTab == group.Key)
                     {
-                        @if (group.Key == "Provisioning")
+                        @if (group.Key == "Payment")
                         {
-                            @RenderProvisioningTab(group.ToList())
+                            @RenderSubTabbedGroup(group.ToList(), PaymentPrefixes, _activePaymentTab, tab => _activePaymentTab = tab)
+                        }
+                        else if (group.Key == "Provisioning")
+                        {
+                            @RenderSubTabbedGroup(group.ToList(), ProvisionerPrefixes, _activeProvisionerTab, tab => _activeProvisionerTab = tab)
                         }
                         else
                         {
@@ -86,10 +90,19 @@ else
     private Dictionary<string, string> _groupValues = new();
     private HashSet<string> _savingGroups = new();
     private string _activeTab = "General";
+    private string _activePaymentTab = "Stripe";
     private string _activeProvisionerTab = "Pterodactyl";
     private bool _loading = true;
     private string? _error;
     private string? _successMessage;
+
+    private static readonly Dictionary<string, (string Label, string Icon)> PaymentPrefixes = new()
+    {
+        ["Stripe"] = ("Stripe", "bi-stripe"),
+        ["PayPal"] = ("PayPal", "bi-paypal"),
+        ["Heleket"] = ("Heleket", "bi-currency-bitcoin"),
+        ["Cryptomus"] = ("Cryptomus", "bi-coin")
+    };
 
     private static readonly Dictionary<string, (string Label, string Icon)> ProvisionerPrefixes = new()
     {
@@ -98,31 +111,39 @@ else
         ["VirtFusion"] = ("VirtFusion", "bi-hdd-rack")
     };
 
-    private RenderFragment RenderProvisioningTab(List<SettingDto> settings) => __builder =>
+    private RenderFragment RenderSubTabbedGroup(
+        List<SettingDto> settings,
+        Dictionary<string, (string Label, string Icon)> prefixes,
+        string activeTab,
+        Action<string> setActiveTab) => __builder =>
     {
-        var provisioners = ProvisionerPrefixes.Keys
+        var tabs = prefixes.Keys
             .Where(prefix => settings.Any(s => s.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
-        if (!provisioners.Contains(_activeProvisionerTab) && provisioners.Any())
-            _activeProvisionerTab = provisioners.First();
+        if (!tabs.Contains(activeTab) && tabs.Any())
+            setActiveTab(tabs.First());
+
+        var currentTab = tabs.Contains(activeTab) ? activeTab : tabs.FirstOrDefault() ?? "";
 
         <ul class="nav nav-pills mb-3">
-            @foreach (var prov in provisioners)
+            @foreach (var tab in tabs)
             {
-                var info = ProvisionerPrefixes[prov];
+                var info = prefixes[tab];
+                var captured = tab;
                 <li class="nav-item">
-                    <button class="nav-link @(_activeProvisionerTab == prov ? "active" : "")"
+                    <button class="nav-link @(currentTab == captured ? "active" : "")"
                             type="button"
-                            @onclick="() => _activeProvisionerTab = prov">
+                            @onclick="() => setActiveTab(captured)">
                         <i class="bi @info.Icon me-1"></i> @info.Label
                     </button>
                 </li>
             }
         </ul>
 
-        var filtered = settings.Where(s => s.Key.StartsWith(_activeProvisionerTab, StringComparison.OrdinalIgnoreCase)).ToList();
-        @RenderSettingsForm("Provisioning", filtered)
+        var groupKey = settings.FirstOrDefault()?.Group ?? "General";
+        var filtered = settings.Where(s => s.Key.StartsWith(currentTab, StringComparison.OrdinalIgnoreCase)).ToList();
+        @RenderSettingsForm(groupKey, filtered)
     };
 
     private RenderFragment RenderSettingsForm(string groupKey, List<SettingDto> settings) => __builder =>
