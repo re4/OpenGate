@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Identity;
 using OpenGate.Application.Interfaces;
 using OpenGate.Domain.Entities;
 using OpenGate.Extensions.Abstractions;
+using OpenGate.Extensions.BtcPayServer;
 using OpenGate.Extensions.Cryptomus;
 using OpenGate.Extensions.Heleket;
+using OpenGate.Extensions.NowPayments;
 using OpenGate.Extensions.Proxmox;
 using OpenGate.Extensions.Pterodactyl;
 using OpenGate.Extensions.VirtFusion;
@@ -58,6 +60,8 @@ builder.Services.AddScoped<IServerProvisioner, ProxmoxProvisioner>();
 
 builder.Services.AddScoped<IPaymentGateway, HeleketGateway>();
 builder.Services.AddScoped<IPaymentGateway, CryptomusGateway>();
+builder.Services.AddScoped<IPaymentGateway, NowPaymentsGateway>();
+builder.Services.AddScoped<IPaymentGateway, BtcPayServerGateway>();
 
 var app = builder.Build();
 

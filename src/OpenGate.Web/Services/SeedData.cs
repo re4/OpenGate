@@ -90,6 +90,18 @@ public static class SeedData
             new() { Key = "CryptomusMerchantId", Value = "", Description = "Cryptomus merchant UUID", Group = "Payment" },
             new() { Key = "CryptomusApiKey", Value = "", Description = "Cryptomus API payment key for signing requests", Group = "Payment" },
 
+            // Payment - NOWPayments
+            new() { Key = "NowPaymentsEnabled", Value = "false", Description = "Enable NOWPayments cryptocurrency payment gateway", Group = "Payment" },
+            new() { Key = "NowPaymentsApiKey", Value = "", Description = "NOWPayments API key", Group = "Payment" },
+            new() { Key = "NowPaymentsIpnSecret", Value = "", Description = "NOWPayments IPN secret key for webhook verification", Group = "Payment" },
+
+            // Payment - BTCPay Server
+            new() { Key = "BtcPayServerEnabled", Value = "false", Description = "Enable BTCPay Server payment gateway", Group = "Payment" },
+            new() { Key = "BtcPayServerUrl", Value = "", Description = "BTCPay Server instance URL (e.g. https://btcpay.example.com)", Group = "Payment" },
+            new() { Key = "BtcPayServerApiKey", Value = "", Description = "BTCPay Server Greenfield API key", Group = "Payment" },
+            new() { Key = "BtcPayServerStoreId", Value = "", Description = "BTCPay Server store ID", Group = "Payment" },
+            new() { Key = "BtcPayServerWebhookSecret", Value = "", Description = "BTCPay Server webhook secret for signature verification", Group = "Payment" },
+
             // Provisioning - Pterodactyl
             new() { Key = "PterodactylEnabled", Value = "false", Description = "Enable Pterodactyl server provisioning", Group = "Provisioning" },
             new() { Key = "PterodactylUrl", Value = "", Description = "Pterodactyl panel URL (e.g. https://panel.example.com)", Group = "Provisioning" },

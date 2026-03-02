@@ -18,5 +18,7 @@
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Proxmox\OpenGate.Extensions.Proxmox.csproj" />
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Heleket\OpenGate.Extensions.Heleket.csproj" />
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Cryptomus\OpenGate.Extensions.Cryptomus.csproj" />
+    <ProjectReference Include="..\..\extensions\OpenGate.Extensions.NowPayments\OpenGate.Extensions.NowPayments.csproj" />
+    <ProjectReference Include="..\..\extensions\OpenGate.Extensions.BtcPayServer\OpenGate.Extensions.BtcPayServer.csproj" />
   </ItemGroup>
 </Project>

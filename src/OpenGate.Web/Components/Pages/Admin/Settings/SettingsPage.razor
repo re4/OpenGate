@@ -28,80 +28,141 @@ else
         </div>
     }
 
-    var groups = _settings.GroupBy(s => string.IsNullOrEmpty(s.Group) ? "General" : s.Group)
-        .OrderBy(g => g.Key == "General" ? 0 : g.Key == "Email" ? 1 : g.Key == "Payment" ? 2 : g.Key == "Provisioning" ? 3 : 4)
-        .ToList();
-
-    @if (!groups.Any())
-    {
-        <div class="card">
-            <div class="card-body">
-                <div class="empty-state">
-                    <i class="bi bi-gear d-block"></i>
-                    <p class="mb-0">No settings configured</p>
-                </div>
-            </div>
-        </div>
-    }
-    else
-    {
-        <div class="card">
-            <div class="card-header p-0 border-bottom-0">
-                <ul class="nav nav-tabs card-header-tabs" role="tablist">
-                    @foreach (var group in groups)
+    <div class="card">
+        <div class="card-header p-0 border-bottom-0">
+            <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                @foreach (var tab in _tabOrder)
+                {
+                    @if (_groupedSettings.ContainsKey(tab))
                     {
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link d-flex align-items-center gap-2 @(_activeTab == group.Key ? "active" : "")"
+                            <button class="nav-link d-flex align-items-center gap-2 @(_activeTab == tab ? "active" : "")"
                                     type="button" role="tab"
-                                    @onclick="() => _activeTab = group.Key">
-                                <i class="bi @GetGroupIcon(group.Key)"></i>
-                                @group.Key
+                                    @onclick="() => _activeTab = tab">
+                                <i class="bi @GetGroupIcon(tab)"></i>
+                                @tab
                             </button>
                         </li>
                     }
-                </ul>
-            </div>
-            <div class="card-body">
-                @foreach (var group in groups)
-                {
-                    @if (_activeTab == group.Key)
+                }
+            </ul>
+        </div>
+        <div class="card-body">
+            @if (_activeTab == "Payment")
+            {
+                <ul class="nav nav-pills mb-3">
+                    @foreach (var entry in PaymentPrefixes)
                     {
-                        @if (group.Key == "Payment")
+                        @if (_paymentSettings.ContainsKey(entry.Key))
                         {
-                            @RenderSubTabbedGroup(group.ToList(), PaymentPrefixes, _activePaymentTab, tab => _activePaymentTab = tab)
-                        }
-                        else if (group.Key == "Provisioning")
-                        {
-                            @RenderSubTabbedGroup(group.ToList(), ProvisionerPrefixes, _activeProvisionerTab, tab => _activeProvisionerTab = tab)
-                        }
-                        else
-                        {
-                            @RenderSettingsForm(group.Key, group.ToList())
+                            <li class="nav-item">
+                                <button class="nav-link @(_activePaymentTab == entry.Key ? "active" : "")"
+                                        type="button"
+                                        @onclick="() => _activePaymentTab = entry.Key">
+                                    <i class="bi @entry.Value.Icon me-1"></i> @entry.Value.Label
+                                </button>
+                            </li>
                         }
                     }
+                </ul>
+
+                @if (_paymentSettings.TryGetValue(_activePaymentTab, out var paySettings))
+                {
+                    <EditForm Model="_formModel" OnValidSubmit="() => SaveSettings(paySettings)">
+                        @foreach (var setting in paySettings)
+                        {
+                            @RenderField(setting, _activePaymentTab)
+                        }
+                        <button type="submit" class="btn btn-primary" disabled="@_saving">
+                            @if (_saving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            }
+                            Save
+                        </button>
+                    </EditForm>
                 }
-            </div>
+            }
+            else if (_activeTab == "Provisioning")
+            {
+                <ul class="nav nav-pills mb-3">
+                    @foreach (var entry in ProvisionerPrefixes)
+                    {
+                        @if (_provisioningSettings.ContainsKey(entry.Key))
+                        {
+                            <li class="nav-item">
+                                <button class="nav-link @(_activeProvisionerTab == entry.Key ? "active" : "")"
+                                        type="button"
+                                        @onclick="() => _activeProvisionerTab = entry.Key">
+                                    <i class="bi @entry.Value.Icon me-1"></i> @entry.Value.Label
+                                </button>
+                            </li>
+                        }
+                    }
+                </ul>
+
+                @if (_provisioningSettings.TryGetValue(_activeProvisionerTab, out var provSettings))
+                {
+                    <EditForm Model="_formModel" OnValidSubmit="() => SaveSettings(provSettings)">
+                        @foreach (var setting in provSettings)
+                        {
+                            @RenderField(setting, _activeProvisionerTab)
+                        }
+                        <button type="submit" class="btn btn-primary" disabled="@_saving">
+                            @if (_saving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            }
+                            Save
+                        </button>
+                    </EditForm>
+                }
+            }
+            else if (_groupedSettings.TryGetValue(_activeTab, out var groupSettings))
+            {
+                <EditForm Model="_formModel" OnValidSubmit="() => SaveSettings(groupSettings)">
+                    @foreach (var setting in groupSettings)
+                    {
+                        @RenderField(setting, null)
+                    }
+                    <button type="submit" class="btn btn-primary" disabled="@_saving">
+                        @if (_saving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                        }
+                        Save
+                    </button>
+                </EditForm>
+            }
         </div>
-    }
+    </div>
 }
 
 @code {
     private List<SettingDto> _settings = new();
     private Dictionary<string, string> _groupValues = new();
-    private HashSet<string> _savingGroups = new();
+    private Dictionary<string, List<SettingDto>> _groupedSettings = new();
+    private Dictionary<string, List<SettingDto>> _paymentSettings = new();
+    private Dictionary<string, List<SettingDto>> _provisioningSettings = new();
+    private readonly object _formModel = new();
     private string _activeTab = "General";
     private string _activePaymentTab = "Stripe";
     private string _activeProvisionerTab = "Pterodactyl";
     private bool _loading = true;
+    private bool _saving;
     private string? _error;
     private string? _successMessage;
+
+    private static readonly string[] _tabOrder = ["General", "Email", "Payment", "Provisioning"];
 
     private static readonly Dictionary<string, (string Label, string Icon)> PaymentPrefixes = new()
     {
         ["Stripe"] = ("Stripe", "bi-stripe"),
         ["PayPal"] = ("PayPal", "bi-paypal"),
         ["Heleket"] = ("Heleket", "bi-currency-bitcoin"),
-        ["Cryptomus"] = ("Cryptomus", "bi-coin")
+        ["Cryptomus"] = ("Cryptomus", "bi-coin"),
+        ["NowPayments"] = ("NOWPayments", "bi-wallet2"),
+        ["BtcPayServer"] = ("BTCPay Server", "bi-currency-bitcoin")
     };
 
     private static readonly Dictionary<string, (string Label, string Icon)> ProvisionerPrefixes = new()
@@ -111,81 +172,38 @@ else
         ["VirtFusion"] = ("VirtFusion", "bi-hdd-rack")
     };
 
-    private RenderFragment RenderSubTabbedGroup(
-        List<SettingDto> settings,
-        Dictionary<string, (string Label, string Icon)> prefixes,
-        string activeTab,
-        Action<string> setActiveTab) => __builder =>
+    private RenderFragment RenderField(SettingDto setting, string? stripPrefix) => __builder =>
     {
-        var tabs = prefixes.Keys
-            .Where(prefix => settings.Any(s => s.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
+        var key = setting.Key;
+        var label = !string.IsNullOrEmpty(stripPrefix) && key.StartsWith(stripPrefix, StringComparison.OrdinalIgnoreCase)
+            ? key[stripPrefix.Length..]
+            : key;
 
-        if (!tabs.Contains(activeTab) && tabs.Any())
-            setActiveTab(tabs.First());
-
-        var currentTab = tabs.Contains(activeTab) ? activeTab : tabs.FirstOrDefault() ?? "";
-
-        <ul class="nav nav-pills mb-3">
-            @foreach (var tab in tabs)
+        <div class="mb-3">
+            <label class="form-label fw-medium">@FormatLabel(label)</label>
+            @if (!string.IsNullOrEmpty(setting.Description))
             {
-                var info = prefixes[tab];
-                var captured = tab;
-                <li class="nav-item">
-                    <button class="nav-link @(currentTab == captured ? "active" : "")"
-                            type="button"
-                            @onclick="() => setActiveTab(captured)">
-                        <i class="bi @info.Icon me-1"></i> @info.Label
-                    </button>
-                </li>
+                <small class="text-muted d-block mb-1">@setting.Description</small>
             }
-        </ul>
-
-        var groupKey = settings.FirstOrDefault()?.Group ?? "General";
-        var filtered = settings.Where(s => s.Key.StartsWith(currentTab, StringComparison.OrdinalIgnoreCase)).ToList();
-        @RenderSettingsForm(groupKey, filtered)
-    };
-
-    private RenderFragment RenderSettingsForm(string groupKey, List<SettingDto> settings) => __builder =>
-    {
-        <EditForm Model="@GetGroupModel(groupKey)" OnValidSubmit="() => SaveSettings(groupKey, settings)">
-            @foreach (var setting in settings)
+            @if (IsPasswordField(key))
             {
-                var key = setting.Key;
-                <div class="mb-3">
-                    <label class="form-label fw-medium">@FormatLabel(key)</label>
-                    @if (!string.IsNullOrEmpty(setting.Description))
-                    {
-                        <small class="text-muted d-block mb-1">@setting.Description</small>
-                    }
-                    @if (IsPasswordField(key))
-                    {
-                        <input type="password" class="form-control" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
-                               @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
-                    }
-                    else if (IsBooleanField(key))
-                    {
-                        <div class="form-check form-switch mt-1">
-                            <input type="checkbox" class="form-check-input" checked="@(GetBoolValue(key, setting.Value))"
-                                   @onchange="@(e => _groupValues[key] = (e.Value is true ? "true" : "false"))" />
-                            <label class="form-check-label text-muted">@(GetBoolValue(key, setting.Value) ? "Enabled" : "Disabled")</label>
-                        </div>
-                    }
-                    else
-                    {
-                        <input type="text" class="form-control" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
-                               @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
-                    }
+                <input type="password" class="form-control" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
+                       @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
+            }
+            else if (IsBooleanField(key))
+            {
+                <div class="form-check form-switch mt-1">
+                    <input type="checkbox" class="form-check-input" checked="@(GetBoolValue(key, setting.Value))"
+                           @onchange="@(e => _groupValues[key] = (e.Value is true ? "true" : "false"))" />
+                    <label class="form-check-label text-muted">@(GetBoolValue(key, setting.Value) ? "Enabled" : "Disabled")</label>
                 </div>
             }
-            <button type="submit" class="btn btn-primary" disabled="@_savingGroups.Contains(groupKey)">
-                @if (_savingGroups.Contains(groupKey))
-                {
-                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                }
-                Save
-            </button>
-        </EditForm>
+            else
+            {
+                <input type="text" class="form-control" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
+                       @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
+            }
+        </div>
     };
 
     protected override async Task OnInitializedAsync()
@@ -194,16 +212,24 @@ else
         {
             _settings = (await SettingService.GetAllAsync()).ToList();
             foreach (var s in _settings)
-            {
                 _groupValues[s.Key] = s.Value;
-            }
 
-            var firstGroup = _settings
-                .Select(s => string.IsNullOrEmpty(s.Group) ? "General" : s.Group)
-                .OrderBy(g => g == "General" ? 0 : g == "Email" ? 1 : g == "Payment" ? 2 : g == "Provisioning" ? 3 : 4)
-                .FirstOrDefault();
-            if (firstGroup != null)
-                _activeTab = firstGroup;
+            _groupedSettings = _settings
+                .GroupBy(s => string.IsNullOrEmpty(s.Group) ? "General" : s.Group)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            BuildSubGroupMap(_groupedSettings.GetValueOrDefault("Payment") ?? [], PaymentPrefixes, _paymentSettings);
+            BuildSubGroupMap(_groupedSettings.GetValueOrDefault("Provisioning") ?? [], ProvisionerPrefixes, _provisioningSettings);
+
+            if (!_paymentSettings.ContainsKey(_activePaymentTab) && _paymentSettings.Any())
+                _activePaymentTab = _paymentSettings.Keys.First();
+
+            if (!_provisioningSettings.ContainsKey(_activeProvisionerTab) && _provisioningSettings.Any())
+                _activeProvisionerTab = _provisioningSettings.Keys.First();
+
+            _activeTab = _groupedSettings.Keys
+                .OrderBy(g => Array.IndexOf(_tabOrder, g) is var i && i >= 0 ? i : 99)
+                .FirstOrDefault() ?? "General";
         }
         catch (Exception ex)
         {
@@ -215,11 +241,21 @@ else
         }
     }
 
-    private object GetGroupModel(string group) => new { };
-
-    private async Task SaveSettings(string groupKey, List<SettingDto> settings)
+    private static void BuildSubGroupMap(List<SettingDto> settings,
+        Dictionary<string, (string Label, string Icon)> prefixes,
+        Dictionary<string, List<SettingDto>> target)
     {
-        _savingGroups.Add(groupKey);
+        foreach (var prefix in prefixes.Keys)
+        {
+            var matching = settings.Where(s => s.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matching.Any())
+                target[prefix] = matching;
+        }
+    }
+
+    private async Task SaveSettings(List<SettingDto> settings)
+    {
+        _saving = true;
         _error = null;
         _successMessage = null;
         try
@@ -227,11 +263,9 @@ else
             foreach (var setting in settings)
             {
                 if (_groupValues.TryGetValue(setting.Key, out var value))
-                {
                     await SettingService.SetValueAsync(setting.Key, value);
-                }
             }
-            _successMessage = $"Settings saved.";
+            _successMessage = "Settings saved.";
         }
         catch (Exception ex)
         {
@@ -239,7 +273,7 @@ else
         }
         finally
         {
-            _savingGroups.Remove(groupKey);
+            _saving = false;
         }
     }
 
