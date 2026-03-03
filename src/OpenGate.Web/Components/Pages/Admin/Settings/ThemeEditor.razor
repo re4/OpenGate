@@ -1,0 +1,472 @@
+@page "/admin/theme"
+@attribute [Authorize(Roles = "Admin")]
+@inject IThemeService ThemeService
+@inject NavigationManager Navigation
+
+<PageTitle>Theme Editor - OpenGate</PageTitle>
+
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+        <h1>Theme Editor</h1>
+        <p>Customize the look and feel of your panel.</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+else
+{
+    @if (_successMessage != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @_successMessage
+            <button type="button" class="btn-close" @onclick="() => _successMessage = null"></button>
+        </div>
+    }
+
+    <div class="card mb-4">
+        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div>
+                    <label class="form-label mb-1">Active Theme</label>
+                    <select class="form-select" style="min-width: 200px;" value="@_selectedThemeId" @onchange="OnThemeSelected">
+                        @foreach (var t in _themes)
+                        {
+                            <option value="@t.Id">@t.Name @(t.IsPreset ? "(Preset)" : "") @(t.IsActive ? "— Active" : "")</option>
+                        }
+                    </select>
+                </div>
+                @if (_selectedTheme != null && !_selectedTheme.IsActive)
+                {
+                    <button type="button" class="btn btn-primary align-self-end" @onclick="ActivateSelected" disabled="@_saving">
+                        Set Active
+                    </button>
+                }
+            </div>
+            <div class="d-flex gap-2 align-self-end">
+                <button type="button" class="btn btn-outline-primary" @onclick="ShowNewThemeModal">
+                    <i class="bi bi-plus-lg me-1"></i>New Theme
+                </button>
+                @if (_selectedTheme != null && !_selectedTheme.IsPreset)
+                {
+                    <button type="button" class="btn btn-outline-danger" @onclick="DeleteSelected" disabled="@_saving">
+                        <i class="bi bi-trash me-1"></i>Delete
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (_showNewThemeModal)
+    {
+        <div class="card mb-4" style="border-color: var(--accent);">
+            <div class="card-body">
+                <h6 class="mb-3">Create New Theme</h6>
+                <div class="d-flex gap-2 align-items-end">
+                    <div class="flex-grow-1">
+                        <label class="form-label">Theme Name</label>
+                        <input type="text" class="form-control" @bind="_newThemeName" placeholder="My Custom Theme" />
+                    </div>
+                    <div>
+                        <label class="form-label">Base on</label>
+                        <select class="form-select" @bind="_duplicateFromId">
+                            @foreach (var t in _themes)
+                            {
+                                <option value="@t.Id">@t.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <button type="button" class="btn btn-primary" @onclick="CreateNewTheme" disabled="@(string.IsNullOrWhiteSpace(_newThemeName) || _saving)">
+                        Create
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" @onclick="() => _showNewThemeModal = false">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (_selectedTheme != null)
+    {
+        <div class="row g-4">
+            <div class="col-lg-7 col-xl-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>
+                            <i class="bi bi-palette me-1"></i>
+                            Editing: <strong>@_selectedTheme.Name</strong>
+                            @if (_selectedTheme.IsPreset)
+                            {
+                                <span class="badge bg-secondary ms-2">Preset</span>
+                            }
+                        </span>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ResetToSaved" disabled="@_saving">
+                                Reset
+                            </button>
+                            <button type="button" class="btn btn-sm btn-primary" @onclick="SaveTheme" disabled="@_saving">
+                                @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        @if (_selectedTheme.IsPreset)
+                        {
+                            <div class="alert alert-warning mb-4" style="font-size: 0.8125rem;">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Preset themes can be edited and saved. Create a new theme if you want to keep the original.
+                            </div>
+                        }
+
+                        <div class="mb-3">
+                            <label class="form-label">Theme Name</label>
+                            <input type="text" class="form-control" @bind="_editName" />
+                        </div>
+
+                        <hr class="my-4" />
+
+                        @foreach (var grp in _sections)
+                        {
+                            <h6 class="mb-3 d-flex align-items-center gap-2">
+                                <i class="bi @grp.Icon"></i> @grp.Label
+                            </h6>
+                            <div class="row g-3 mb-4">
+                                @foreach (var field in grp.Fields)
+                                {
+                                    <div class="@(field.Type == FieldType.Number ? "col-md-4" : "col-md-6 col-xl-4")">
+                                        <label class="form-label">@field.Label</label>
+                                        @if (field.Type == FieldType.Color)
+                                        {
+                                            <div class="input-group">
+                                                <input type="color"
+                                                       class="form-control form-control-color"
+                                                       value="@GetVar(field.Key)"
+                                                       @onchange="e => SetVar(field.Key, e.Value?.ToString())" />
+                                                <input type="text"
+                                                       class="form-control font-mono"
+                                                       style="font-size: 0.75rem;"
+                                                       value="@GetVar(field.Key)"
+                                                       @onchange="e => SetVar(field.Key, e.Value?.ToString())" />
+                                            </div>
+                                        }
+                                        else if (field.Type == FieldType.Text)
+                                        {
+                                            <input type="text"
+                                                   class="form-control font-mono"
+                                                   style="font-size: 0.75rem;"
+                                                   value="@GetVar(field.Key)"
+                                                   @onchange="e => SetVar(field.Key, e.Value?.ToString())" />
+                                        }
+                                        else if (field.Type == FieldType.Number)
+                                        {
+                                            <div class="input-group">
+                                                <input type="number"
+                                                       class="form-control"
+                                                       min="0" max="32"
+                                                       value="@GetVar(field.Key)"
+                                                       @onchange="e => SetVar(field.Key, e.Value?.ToString())" />
+                                                <span class="input-group-text">px</span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-5 col-xl-4">
+                <div class="position-sticky" style="top: 68px;">
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <i class="bi bi-eye me-1"></i> Live Preview
+                        </div>
+                    </div>
+
+                    <div style="@PreviewContainerStyle()">
+                        <div style="@PreviewCardStyle()" class="mb-3">
+                            <div style="@PreviewCardHeaderStyle()">
+                                Sample Card
+                            </div>
+                            <div style="padding: 1.25rem;">
+                                <p style="color: @PV("Text"); margin: 0 0 0.5rem 0; font-size: 0.875rem;">
+                                    Primary text looks like this.
+                                </p>
+                                <p style="color: @PV("TextDim"); margin: 0 0 0.5rem 0; font-size: 0.8125rem;">
+                                    Dimmed text for secondary info.
+                                </p>
+                                <p style="color: @PV("TextMuted"); margin: 0 0 1rem 0; font-size: 0.8125rem;">
+                                    Muted text for subtle details.
+                                </p>
+                                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                                    <span style="@PreviewBtnStyle()">Primary Button</span>
+                                    <span style="@PreviewBtnOutlineStyle()">Outline Button</span>
+                                </div>
+                                <div style="display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                                    <span style="@PreviewBadgeStyle(PV("Green"), PV("GreenMuted"))">Active</span>
+                                    <span style="@PreviewBadgeStyle(PV("Yellow"), PV("YellowMuted"))">Pending</span>
+                                    <span style="@PreviewBadgeStyle(PV("Red"), PV("RedMuted"))">Overdue</span>
+                                    <span style="@PreviewBadgeStyle(PV("Blue"), PV("BlueMuted"))">Open</span>
+                                    <span style="@PreviewBadgeStyle(PV("Orange"), PV("OrangeMuted"))">High</span>
+                                </div>
+                                <div style="@PreviewInputStyle()" class="mb-2">
+                                    Placeholder text...
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="@PreviewCardStyle()">
+                            <div style="padding: 1.25rem;">
+                                <div style="font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.06em; color: @PV("TextMuted"); margin-bottom: 0.5rem;">
+                                    Total Revenue
+                                </div>
+                                <div style="font-size: 1.75rem; font-weight: 700; color: @PV("Text"); line-height: 1;">
+                                    $4,280.00
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<ThemeDto> _themes = new();
+    private ThemeDto? _selectedTheme;
+    private string _selectedThemeId = "";
+    private Dictionary<string, string> _editVars = new();
+    private string _editName = "";
+    private bool _loading = true;
+    private bool _saving;
+    private string? _error;
+    private string? _successMessage;
+    private bool _showNewThemeModal;
+    private string _newThemeName = "";
+    private string _duplicateFromId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadThemesAsync();
+    }
+
+    private async Task LoadThemesAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _themes = (await ThemeService.GetAllAsync()).OrderByDescending(t => t.IsActive).ThenBy(t => t.Name).ToList();
+            if (!string.IsNullOrEmpty(_selectedThemeId))
+            {
+                SelectTheme(_selectedThemeId);
+            }
+            else if (_themes.Any())
+            {
+                var active = _themes.FirstOrDefault(t => t.IsActive) ?? _themes.First();
+                SelectTheme(active.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void SelectTheme(string id)
+    {
+        _selectedTheme = _themes.FirstOrDefault(t => t.Id == id);
+        _selectedThemeId = id;
+        if (_selectedTheme != null)
+        {
+            _editVars = new Dictionary<string, string>(_selectedTheme.Variables);
+            _editName = _selectedTheme.Name;
+            _duplicateFromId = id;
+        }
+    }
+
+    private void OnThemeSelected(ChangeEventArgs e)
+    {
+        var id = e.Value?.ToString() ?? "";
+        SelectTheme(id);
+    }
+
+    private async Task ActivateSelected()
+    {
+        if (_selectedTheme == null) return;
+        _saving = true;
+        _error = null;
+        try
+        {
+            await ThemeService.SetActiveAsync(_selectedTheme.Id);
+            _successMessage = $"Theme \"{_selectedTheme.Name}\" is now active. Refresh the page to see changes.";
+            await LoadThemesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task SaveTheme()
+    {
+        if (_selectedTheme == null) return;
+        _saving = true;
+        _error = null;
+        _successMessage = null;
+        try
+        {
+            await ThemeService.UpdateAsync(_selectedTheme.Id, new UpdateThemeDto
+            {
+                Name = _editName,
+                Variables = _editVars
+            });
+            _successMessage = "Theme saved." + (_selectedTheme.IsActive ? " Refresh the page to see changes." : "");
+            await LoadThemesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private void ResetToSaved()
+    {
+        if (_selectedTheme == null) return;
+        _editVars = new Dictionary<string, string>(_selectedTheme.Variables);
+        _editName = _selectedTheme.Name;
+    }
+
+    private void ShowNewThemeModal()
+    {
+        _showNewThemeModal = true;
+        _newThemeName = "";
+        _duplicateFromId = _selectedThemeId;
+    }
+
+    private async Task CreateNewTheme()
+    {
+        if (string.IsNullOrWhiteSpace(_newThemeName)) return;
+        _saving = true;
+        _error = null;
+        try
+        {
+            var baseTheme = _themes.FirstOrDefault(t => t.Id == _duplicateFromId);
+            var vars = baseTheme?.Variables ?? new();
+
+            var created = await ThemeService.CreateAsync(new CreateThemeDto
+            {
+                Name = _newThemeName.Trim(),
+                Variables = new Dictionary<string, string>(vars)
+            });
+
+            _showNewThemeModal = false;
+            _selectedThemeId = created.Id;
+            await LoadThemesAsync();
+            _successMessage = $"Theme \"{created.Name}\" created.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task DeleteSelected()
+    {
+        if (_selectedTheme == null || _selectedTheme.IsPreset) return;
+        _saving = true;
+        _error = null;
+        try
+        {
+            await ThemeService.DeleteAsync(_selectedTheme.Id);
+            _selectedThemeId = "";
+            _successMessage = "Theme deleted.";
+            await LoadThemesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private string GetVar(string key) => _editVars.GetValueOrDefault(key, "");
+    private void SetVar(string key, string? value) => _editVars[key] = value ?? "";
+
+    private string PV(string key) => _editVars.GetValueOrDefault(key, "#888");
+
+    private string PreviewContainerStyle() =>
+        $"background: {PV("BgBody")}; border-radius: {PV("RadiusLg")}px; padding: 1.25rem; border: 1px solid {PV("Border")};";
+
+    private string PreviewCardStyle() =>
+        $"background: {PV("BgSurface")}; border: 1px solid {PV("Border")}; border-radius: {PV("RadiusLg")}px;";
+
+    private string PreviewCardHeaderStyle() =>
+        $"padding: 0.875rem 1.25rem; border-bottom: 1px solid {PV("Border")}; font-weight: 600; font-size: 0.875rem; color: {PV("Text")};";
+
+    private string PreviewBtnStyle() =>
+        $"background: {PV("Accent")}; color: #fff; padding: 0.35rem 0.85rem; border-radius: {PV("Radius")}px; font-size: 0.8125rem; font-weight: 500; display: inline-block;";
+
+    private string PreviewBtnOutlineStyle() =>
+        $"background: transparent; color: {PV("AccentHover")}; border: 1px solid {PV("Border")}; padding: 0.35rem 0.85rem; border-radius: {PV("Radius")}px; font-size: 0.8125rem; font-weight: 500; display: inline-block;";
+
+    private string PreviewBadgeStyle(string fg, string bg) =>
+        $"background: {bg}; color: {fg}; padding: 0.2em 0.6em; border-radius: 4px; font-size: 0.6875rem; font-weight: 500;";
+
+    private string PreviewInputStyle() =>
+        $"background: {PV("BgInput")}; border: 1px solid {PV("Border")}; color: {PV("TextMuted")}; border-radius: {PV("Radius")}px; padding: 0.5rem 0.75rem; font-size: 0.8125rem;";
+
+    private enum FieldType { Color, Text, Number }
+
+    private record FieldDef(string Key, string Label, FieldType Type);
+    private record SectionDef(string Label, string Icon, FieldDef[] Fields);
+
+    private static readonly SectionDef[] _sections =
+    [
+        new("Backgrounds", "bi-paint-bucket", [
+            new("BgBody", "Body", FieldType.Color),
+            new("BgSurface", "Surface / Cards", FieldType.Color),
+            new("BgElevated", "Elevated / Hover", FieldType.Color),
+            new("BgInput", "Inputs", FieldType.Color),
+        ]),
+        new("Borders", "bi-bounding-box", [
+            new("Border", "Border", FieldType.Color),
+            new("BorderLight", "Border Light", FieldType.Color),
+        ]),
+        new("Text", "bi-fonts", [
+            new("Text", "Primary", FieldType.Color),
+            new("TextDim", "Dim", FieldType.Color),
+            new("TextMuted", "Muted", FieldType.Color),
+        ]),
+        new("Accent", "bi-droplet-fill", [
+            new("Accent", "Accent", FieldType.Color),
+            new("AccentHover", "Accent Hover", FieldType.Color),
+            new("AccentMuted", "Accent Muted", FieldType.Text),
+        ]),
+        new("Status Colors", "bi-circle-fill", [
+            new("Green", "Green", FieldType.Color),
+            new("GreenMuted", "Green Muted", FieldType.Text),
+            new("Yellow", "Yellow", FieldType.Color),
+            new("YellowMuted", "Yellow Muted", FieldType.Text),
+            new("Red", "Red", FieldType.Color),
+            new("RedMuted", "Red Muted", FieldType.Text),
+            new("Blue", "Blue", FieldType.Color),
+            new("BlueMuted", "Blue Muted", FieldType.Text),
+            new("Orange", "Orange", FieldType.Color),
+            new("OrangeMuted", "Orange Muted", FieldType.Text),
+        ]),
+        new("Border Radius", "bi-aspect-ratio", [
+            new("Radius", "Default Radius", FieldType.Number),
+            new("RadiusLg", "Large Radius", FieldType.Number),
+        ]),
+    ];
+}

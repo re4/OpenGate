@@ -52,10 +52,10 @@ else
                         <tr>
                             <td>@ticket.Subject</td>
                             <td>
-                                <span class="badge status-@ticket.Status.ToString().ToLowerInvariant()">@ticket.Status</span>
+                                <span class="badge badge-status status-@ticket.Status.ToString().ToLowerInvariant()">@ticket.Status</span>
                             </td>
                             <td>
-                                <span class="badge status-@ticket.Priority.ToString().ToLowerInvariant()">@ticket.Priority</span>
+                                <span class="badge badge-status priority-@ticket.Priority.ToString().ToLowerInvariant()">@ticket.Priority</span>
                             </td>
                             <td>@ticket.CreatedAt.ToString("MMM d, yyyy")</td>
                             <td>@ticket.UpdatedAt.ToString("MMM d, yyyy")</td>

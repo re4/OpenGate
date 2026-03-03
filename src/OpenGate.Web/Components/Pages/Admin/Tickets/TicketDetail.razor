@@ -101,6 +101,32 @@ else
                 </div>
             }
         </div>
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Ticket Info</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="mb-0">
+                        <dt>User</dt>
+                        <dd>@(_user?.FullName ?? _user?.Email ?? _ticket.UserId)</dd>
+                        <dt>Status</dt>
+                        <dd><span class="badge badge-status status-@_ticket.Status.ToString().ToLowerInvariant()">@_ticket.Status</span></dd>
+                        <dt>Priority</dt>
+                        <dd><span class="badge badge-status priority-@_ticket.Priority.ToString().ToLowerInvariant()">@_ticket.Priority</span></dd>
+                        <dt>Created</dt>
+                        <dd>@_ticket.CreatedAt.ToString("MMM d, yyyy HH:mm")</dd>
+                        <dt>Last Updated</dt>
+                        <dd>@_ticket.UpdatedAt.ToString("MMM d, yyyy HH:mm")</dd>
+                        @if (_ticket.ClosedAt.HasValue)
+                        {
+                            <dt>Closed</dt>
+                            <dd>@_ticket.ClosedAt.Value.ToString("MMM d, yyyy HH:mm")</dd>
+                        }
+                    </dl>
+                </div>
+            </div>
+        </div>
     </div>
 }
 

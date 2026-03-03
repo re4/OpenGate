@@ -39,8 +39,8 @@ else
         <div>
             <h1>@_ticket.Subject</h1>
             <div class="d-flex gap-2 flex-wrap">
-                <span class="badge status-@_ticket.Status.ToString().ToLowerInvariant()">@_ticket.Status</span>
-                <span class="badge status-@_ticket.Priority.ToString().ToLowerInvariant()">@_ticket.Priority</span>
+                <span class="badge badge-status status-@_ticket.Status.ToString().ToLowerInvariant()">@_ticket.Status</span>
+                <span class="badge badge-status priority-@_ticket.Priority.ToString().ToLowerInvariant()">@_ticket.Priority</span>
             </div>
         </div>
     </div>

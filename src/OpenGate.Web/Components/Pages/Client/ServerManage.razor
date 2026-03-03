@@ -229,7 +229,7 @@ else
                         <dt>Product</dt>
                         <dd>@string.Join(", ", _order.Items.Select(i => i.ProductName))</dd>
                         <dt>Order Status</dt>
-                        <dd><span class="badge status-@_order.Status.ToString().ToLowerInvariant()">@_order.Status</span></dd>
+                        <dd><span class="badge badge-status status-@_order.Status.ToString().ToLowerInvariant()">@_order.Status</span></dd>
                     </dl>
                 </div>
             </div>

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using OpenGate.Domain.Entities;
 using OpenGate.Domain.Interfaces;
+using Theme = OpenGate.Domain.Entities.Theme;
 
 namespace OpenGate.Web.Services;
 
@@ -42,6 +43,9 @@ public static class SeedData
         }
 
         await SeedSettingsAsync(settingRepository);
+
+        var themeRepository = scope.ServiceProvider.GetRequiredService<IThemeRepository>();
+        await SeedThemesAsync(themeRepository);
     }
 
     private static async Task SeedSettingsAsync(ISettingRepository repository)
@@ -134,6 +138,186 @@ public static class SeedData
             {
                 await repository.CreateAsync(setting);
             }
+        }
+    }
+
+    private static async Task SeedThemesAsync(IThemeRepository repository)
+    {
+        var existing = await repository.GetAllAsync();
+        if (existing.Any()) return;
+
+        var presets = new List<Theme>
+        {
+            new()
+            {
+                Name = "Default Dark",
+                IsActive = true,
+                IsPreset = true,
+                Variables = new Dictionary<string, string>
+                {
+                    ["BgBody"] = "#0e0e10",
+                    ["BgSurface"] = "#18181b",
+                    ["BgElevated"] = "#1f1f23",
+                    ["BgInput"] = "#26262b",
+                    ["Border"] = "#2e2e33",
+                    ["BorderLight"] = "#3a3a40",
+                    ["Text"] = "#e4e4e7",
+                    ["TextDim"] = "#a1a1aa",
+                    ["TextMuted"] = "#71717a",
+                    ["Accent"] = "#6366f1",
+                    ["AccentHover"] = "#818cf8",
+                    ["AccentMuted"] = "rgba(99, 102, 241, 0.15)",
+                    ["Green"] = "#22c55e",
+                    ["GreenMuted"] = "rgba(34, 197, 94, 0.15)",
+                    ["Yellow"] = "#eab308",
+                    ["YellowMuted"] = "rgba(234, 179, 8, 0.12)",
+                    ["Red"] = "#ef4444",
+                    ["RedMuted"] = "rgba(239, 68, 68, 0.12)",
+                    ["Blue"] = "#3b82f6",
+                    ["BlueMuted"] = "rgba(59, 130, 246, 0.12)",
+                    ["Orange"] = "#f97316",
+                    ["OrangeMuted"] = "rgba(249, 115, 22, 0.12)",
+                    ["Radius"] = "8",
+                    ["RadiusLg"] = "12",
+                }
+            },
+            new()
+            {
+                Name = "Midnight",
+                IsActive = false,
+                IsPreset = true,
+                Variables = new Dictionary<string, string>
+                {
+                    ["BgBody"] = "#0b0f1a",
+                    ["BgSurface"] = "#111827",
+                    ["BgElevated"] = "#1e293b",
+                    ["BgInput"] = "#1e293b",
+                    ["Border"] = "#334155",
+                    ["BorderLight"] = "#475569",
+                    ["Text"] = "#f1f5f9",
+                    ["TextDim"] = "#94a3b8",
+                    ["TextMuted"] = "#64748b",
+                    ["Accent"] = "#38bdf8",
+                    ["AccentHover"] = "#7dd3fc",
+                    ["AccentMuted"] = "rgba(56, 189, 248, 0.15)",
+                    ["Green"] = "#34d399",
+                    ["GreenMuted"] = "rgba(52, 211, 153, 0.15)",
+                    ["Yellow"] = "#fbbf24",
+                    ["YellowMuted"] = "rgba(251, 191, 36, 0.12)",
+                    ["Red"] = "#f87171",
+                    ["RedMuted"] = "rgba(248, 113, 113, 0.12)",
+                    ["Blue"] = "#60a5fa",
+                    ["BlueMuted"] = "rgba(96, 165, 250, 0.12)",
+                    ["Orange"] = "#fb923c",
+                    ["OrangeMuted"] = "rgba(251, 146, 60, 0.12)",
+                    ["Radius"] = "8",
+                    ["RadiusLg"] = "12",
+                }
+            },
+            new()
+            {
+                Name = "Emerald",
+                IsActive = false,
+                IsPreset = true,
+                Variables = new Dictionary<string, string>
+                {
+                    ["BgBody"] = "#0a0f0d",
+                    ["BgSurface"] = "#111916",
+                    ["BgElevated"] = "#1a2420",
+                    ["BgInput"] = "#1e2b25",
+                    ["Border"] = "#2d3d35",
+                    ["BorderLight"] = "#3d5248",
+                    ["Text"] = "#e2efe8",
+                    ["TextDim"] = "#9cb5a8",
+                    ["TextMuted"] = "#6e8a7c",
+                    ["Accent"] = "#10b981",
+                    ["AccentHover"] = "#34d399",
+                    ["AccentMuted"] = "rgba(16, 185, 129, 0.15)",
+                    ["Green"] = "#22c55e",
+                    ["GreenMuted"] = "rgba(34, 197, 94, 0.15)",
+                    ["Yellow"] = "#eab308",
+                    ["YellowMuted"] = "rgba(234, 179, 8, 0.12)",
+                    ["Red"] = "#ef4444",
+                    ["RedMuted"] = "rgba(239, 68, 68, 0.12)",
+                    ["Blue"] = "#3b82f6",
+                    ["BlueMuted"] = "rgba(59, 130, 246, 0.12)",
+                    ["Orange"] = "#f97316",
+                    ["OrangeMuted"] = "rgba(249, 115, 22, 0.12)",
+                    ["Radius"] = "10",
+                    ["RadiusLg"] = "14",
+                }
+            },
+            new()
+            {
+                Name = "Rose",
+                IsActive = false,
+                IsPreset = true,
+                Variables = new Dictionary<string, string>
+                {
+                    ["BgBody"] = "#100b10",
+                    ["BgSurface"] = "#1a1220",
+                    ["BgElevated"] = "#241a2e",
+                    ["BgInput"] = "#2a1f33",
+                    ["Border"] = "#3d2d4a",
+                    ["BorderLight"] = "#523d63",
+                    ["Text"] = "#f0e4f5",
+                    ["TextDim"] = "#b8a0c8",
+                    ["TextMuted"] = "#8a6e9c",
+                    ["Accent"] = "#f43f5e",
+                    ["AccentHover"] = "#fb7185",
+                    ["AccentMuted"] = "rgba(244, 63, 94, 0.15)",
+                    ["Green"] = "#22c55e",
+                    ["GreenMuted"] = "rgba(34, 197, 94, 0.15)",
+                    ["Yellow"] = "#eab308",
+                    ["YellowMuted"] = "rgba(234, 179, 8, 0.12)",
+                    ["Red"] = "#ef4444",
+                    ["RedMuted"] = "rgba(239, 68, 68, 0.12)",
+                    ["Blue"] = "#3b82f6",
+                    ["BlueMuted"] = "rgba(59, 130, 246, 0.12)",
+                    ["Orange"] = "#f97316",
+                    ["OrangeMuted"] = "rgba(249, 115, 22, 0.12)",
+                    ["Radius"] = "8",
+                    ["RadiusLg"] = "12",
+                }
+            },
+            new()
+            {
+                Name = "Sunset",
+                IsActive = false,
+                IsPreset = true,
+                Variables = new Dictionary<string, string>
+                {
+                    ["BgBody"] = "#120d08",
+                    ["BgSurface"] = "#1c150e",
+                    ["BgElevated"] = "#271e14",
+                    ["BgInput"] = "#2e2418",
+                    ["Border"] = "#3e3020",
+                    ["BorderLight"] = "#55422d",
+                    ["Text"] = "#f5efe6",
+                    ["TextDim"] = "#c4b49e",
+                    ["TextMuted"] = "#8f7e68",
+                    ["Accent"] = "#f97316",
+                    ["AccentHover"] = "#fb923c",
+                    ["AccentMuted"] = "rgba(249, 115, 22, 0.15)",
+                    ["Green"] = "#22c55e",
+                    ["GreenMuted"] = "rgba(34, 197, 94, 0.15)",
+                    ["Yellow"] = "#eab308",
+                    ["YellowMuted"] = "rgba(234, 179, 8, 0.12)",
+                    ["Red"] = "#ef4444",
+                    ["RedMuted"] = "rgba(239, 68, 68, 0.12)",
+                    ["Blue"] = "#3b82f6",
+                    ["BlueMuted"] = "rgba(59, 130, 246, 0.12)",
+                    ["Orange"] = "#f97316",
+                    ["OrangeMuted"] = "rgba(249, 115, 22, 0.12)",
+                    ["Radius"] = "6",
+                    ["RadiusLg"] = "10",
+                }
+            },
+        };
+
+        foreach (var theme in presets)
+        {
+            await repository.CreateAsync(theme);
         }
     }
 }

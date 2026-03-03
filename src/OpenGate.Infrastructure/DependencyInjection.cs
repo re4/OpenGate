@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IPaymentRepository, PaymentRepository>();
         services.AddScoped<ITicketRepository, TicketRepository>();
         services.AddScoped<ISettingRepository, SettingRepository>();
+        services.AddScoped<IThemeRepository, ThemeRepository>();
         services.AddScoped<IExtensionConfigRepository, ExtensionConfigRepository>();
 
         services.AddScoped<ICategoryService, CategoryService>();
@@ -32,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ISettingService, SettingService>();
+        services.AddScoped<IThemeService, ThemeService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IServerManagementService, ServerManagementService>();
 

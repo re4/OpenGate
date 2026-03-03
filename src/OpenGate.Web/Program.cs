@@ -47,6 +47,8 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddSingleton<ThemeCssProvider>();
+builder.Services.AddSingleton<IThemeCssProvider>(sp => sp.GetRequiredService<ThemeCssProvider>());
 builder.Services.AddScoped<CartService>();
 builder.Services.AddScoped<IInvoicePdfService, InvoicePdfService>();
 builder.Services.AddScoped<IEmailService, EmailService>();

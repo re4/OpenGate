@@ -55,7 +55,7 @@ else
                             <td>@GetItemsSummary(order)</td>
                             <td><span class="font-mono">@order.Total.ToString("C")</span></td>
                             <td>
-                                <span class="badge status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span>
+                                <span class="badge badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span>
                             </td>
                             <td>@order.CreatedAt.ToString("MMM d, yyyy")</td>
                             <td>@(order.NextDueDate?.ToString("MMM d, yyyy") ?? "—")</td>

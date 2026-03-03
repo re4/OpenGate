@@ -55,7 +55,7 @@ else
                         }
                     </dl>
                 </div>
-                <div class="card-footer">
+                <div class="card-footer d-flex gap-2 flex-wrap">
                     @if (_order.Status == OrderStatus.Pending || _order.Status == OrderStatus.Suspended)
                     {
                         <button type="button" class="btn btn-success btn-sm" @onclick="Activate" disabled="@_actionLoading">

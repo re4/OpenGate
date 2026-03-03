@@ -50,5 +50,9 @@ public class MappingProfile : Profile
         // Setting
         CreateMap<Setting, SettingDto>();
         CreateMap<UpdateSettingDto, Setting>();
+
+        // Theme
+        CreateMap<Theme, ThemeDto>();
+        CreateMap<CreateThemeDto, Theme>();
     }
 }

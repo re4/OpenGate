@@ -486,6 +486,8 @@ code, .font-mono { font-family: var(--font-mono); font-size: 0.85em; }
     opacity: 1;
 }
 
+.auth-card-wide { max-width: 480px; }
+
 .auth-card .text-muted { color: var(--text-muted) !important; }
 .auth-card a { color: var(--accent-hover); }
 
@@ -558,6 +560,96 @@ code, .font-mono { font-family: var(--font-mono); font-size: 0.85em; }
     border-color: var(--accent);
     color: var(--accent-hover);
 }
+
+/* ── Breadcrumbs ───────────────────────────────── */
+
+.breadcrumb {
+    --bs-breadcrumb-divider-color: var(--text-muted);
+    --bs-breadcrumb-item-active-color: var(--text-dim);
+    margin-bottom: 0;
+}
+
+.breadcrumb-item a { color: var(--accent-hover); }
+.breadcrumb-item a:hover { color: #a5b4fc; }
+.breadcrumb-item.active { color: var(--text-muted); }
+.breadcrumb-item + .breadcrumb-item::before { color: var(--text-muted); }
+
+/* ── Nav Tabs & Pills ──────────────────────────── */
+
+.nav-tabs {
+    --bs-nav-tabs-border-color: var(--border);
+    --bs-nav-tabs-link-active-bg: var(--bg-surface);
+    --bs-nav-tabs-link-active-border-color: var(--border) var(--border) var(--bg-surface);
+    --bs-nav-tabs-link-active-color: var(--text);
+    --bs-nav-tabs-link-hover-border-color: var(--border-light) var(--border-light) var(--border);
+    border-bottom-color: var(--border);
+}
+
+.nav-tabs .nav-link {
+    color: var(--text-dim);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border-radius: 6px 6px 0 0;
+}
+
+.nav-tabs .nav-link:hover { color: var(--text); }
+.nav-tabs .nav-link.active { color: var(--text); background: var(--bg-surface); }
+
+.nav-pills .nav-link {
+    color: var(--text-dim);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border-radius: 6px;
+}
+
+.nav-pills .nav-link:hover { color: var(--text); background: var(--bg-elevated); }
+
+.nav-pills .nav-link.active {
+    background: var(--accent-muted);
+    color: var(--accent-hover);
+}
+
+/* ── Extra Alert Variants ──────────────────────── */
+
+.alert-info {
+    background: var(--blue-muted);
+    border: 1px solid rgba(59,130,246,0.2);
+    color: #93c5fd;
+    border-radius: var(--radius);
+    font-size: 0.8125rem;
+}
+
+.alert-secondary {
+    background: rgba(113,113,122,0.12);
+    border: 1px solid rgba(113,113,122,0.2);
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    font-size: 0.8125rem;
+}
+
+/* ── Definition Lists ──────────────────────────── */
+
+dt { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
+dd { color: var(--text); font-size: 0.8125rem; margin-bottom: 0.75rem; }
+
+/* ── Input Group ────────────────────────────────── */
+
+.input-group-text {
+    background: var(--bg-elevated);
+    border-color: var(--border);
+    color: var(--text-dim);
+    font-size: 0.8125rem;
+}
+
+.form-control-color {
+    max-width: 3rem;
+    padding: 0.25rem;
+    background: var(--bg-input);
+    border-color: var(--border);
+}
+
+.form-control-color::-webkit-color-swatch-wrapper { padding: 2px; }
+.form-control-color::-webkit-color-swatch { border: none; border-radius: 3px; }
 
 /* ── Misc Overrides ─────────────────────────────── */
 

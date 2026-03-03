@@ -53,17 +53,20 @@ else
                             <td><code class="font-mono">@TruncateId(inv.OrderId)</code></td>
                             <td><span class="font-mono">@inv.Total.ToString("C")</span></td>
                             <td>
-                                <span class="badge status-@inv.Status.ToString().ToLowerInvariant()">@inv.Status</span>
+                                <span class="badge badge-status status-@inv.Status.ToString().ToLowerInvariant()">@inv.Status</span>
                             </td>
                             <td>@inv.DueDate.ToString("MMM d, yyyy")</td>
                             <td>@(inv.PaidAt?.ToString("MMM d, yyyy") ?? "—")</td>
                             <td>
-                                <a href="/api/invoices/@inv.Id/pdf" target="_blank">PDF</a>
-                                @if (inv.Status != InvoiceStatus.Paid && inv.Status != InvoiceStatus.Cancelled && inv.Status != InvoiceStatus.Refunded)
-                                {
-                                    <span class="mx-1">|</span>
-                                    <a href="/my/invoices/@inv.Id/pay" class="btn btn-sm btn-primary">Pay</a>
-                                }
+                                <div class="d-flex gap-1 align-items-center">
+                                    <a href="/api/invoices/@inv.Id/pdf" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+                                    </a>
+                                    @if (inv.Status != InvoiceStatus.Paid && inv.Status != InvoiceStatus.Cancelled && inv.Status != InvoiceStatus.Refunded)
+                                    {
+                                        <a href="/my/invoices/@inv.Id/pay" class="btn btn-sm btn-primary">Pay</a>
+                                    }
+                                </div>
                             </td>
                         </tr>
                     }
