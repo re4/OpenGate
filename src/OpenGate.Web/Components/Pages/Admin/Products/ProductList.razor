@@ -4,6 +4,7 @@
 @inject ICategoryService CategoryService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject CurrencyProvider CurrencyProvider
 
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
     <h1>Products</h1>
@@ -57,7 +58,7 @@ else
                         <tr>
                             <td>@product.Name</td>
                             <td>@(category?.Name ?? "-")</td>
-                            <td class="font-mono">@product.Price.ToString("C2")</td>
+                            <td class="font-mono">@_currency.Format(product.Price)</td>
                             <td>@product.BillingCycle</td>
                             <td>@(product.Stock == -1 ? "Unlimited" : product.Stock.ToString())</td>
                             <td>
@@ -89,6 +90,7 @@ else
 @code {
     private List<ProductDto> _products = new();
     private List<CategoryDto> _categories = new();
+    private CurrencyInfo _currency = new();
     private bool _loading = true;
     private string? _error;
 
@@ -96,6 +98,7 @@ else
     {
         try
         {
+            _currency = await CurrencyProvider.GetAsync();
             var productsTask = ProductService.GetAllAsync();
             var categoriesTask = CategoryService.GetAllAsync();
             await Task.WhenAll(productsTask, categoriesTask);

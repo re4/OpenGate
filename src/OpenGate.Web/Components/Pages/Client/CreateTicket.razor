@@ -3,6 +3,9 @@
 @inject ITicketService TicketService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject ICaptchaService CaptchaService
+@inject FileUploadService FileUploadService
+@inject IJSRuntime JS
 
 <PageTitle>New Ticket - OpenGate</PageTitle>
 
@@ -51,6 +54,34 @@
                 <ValidationMessage For="@(() => _model.Body)" />
             </div>
 
+            <div class="mb-3">
+                <label class="form-label">Attachments <span class="text-muted small">(optional)</span></label>
+                <InputFile OnChange="HandleFileSelected" multiple accept="image/*,video/*,.txt,.log"
+                           class="form-control" />
+                <small class="text-muted">Max @_maxSizeDisplay per file. Allowed: images, videos, .txt, .log</small>
+            </div>
+
+            @if (_selectedFiles.Any())
+            {
+                <div class="mb-3">
+                    @foreach (var (file, idx) in _selectedFiles.Select((f, i) => (f, i)))
+                    {
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <i class="bi bi-paperclip"></i>
+                            <span class="small">@file.Name <span class="text-muted">(@FormatSize(file.Size))</span></span>
+                            <button type="button" class="btn btn-link btn-sm text-danger p-0" @onclick="() => RemoveFile(idx)">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_captchaConfig is { IsConfigured: true, TicketEnabled: true })
+            {
+                <div class="mb-3" id="ticket-captcha-container"></div>
+            }
+
             <div class="d-flex gap-2">
                 <button type="submit" class="btn btn-primary" disabled="@_isSubmitting">
                     @if (_isSubmitting)
@@ -67,8 +98,59 @@
 
 @code {
     private CreateTicketModel _model = new();
+    private CaptchaConfig? _captchaConfig;
     private string? _errorMessage;
     private bool _isSubmitting;
+    private string _captchaToken = "";
+    private List<IBrowserFile> _selectedFiles = new();
+    private long _maxUploadBytes = 1L * 1024 * 1024 * 1024;
+    private string _maxSizeDisplay = "1 GB";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _maxUploadBytes = await FileUploadService.GetMaxUploadSizeForClientAsync();
+        _maxSizeDisplay = FormatSizeShort(_maxUploadBytes);
+        _captchaConfig = await CaptchaService.GetConfigAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _captchaConfig is { IsConfigured: true, TicketEnabled: true })
+        {
+            await Task.Delay(500);
+            try
+            {
+                if (_captchaConfig.Provider == "RecaptchaV3")
+                {
+                    _captchaToken = await JS.InvokeAsync<string>("captchaInterop.executeV3", _captchaConfig.SiteKey);
+                }
+                else
+                {
+                    var dotNetRef = DotNetObjectReference.Create(this);
+                    await JS.InvokeVoidAsync("captchaInterop.render", "ticket-captcha-container", _captchaConfig.Provider, _captchaConfig.SiteKey, dotNetRef);
+                }
+            }
+            catch { }
+        }
+    }
+
+    [JSInvokable]
+    public Task OnCaptchaCallback(string token)
+    {
+        _captchaToken = token;
+        return Task.CompletedTask;
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFiles = e.GetMultipleFiles(5).ToList();
+    }
+
+    private void RemoveFile(int index)
+    {
+        if (index >= 0 && index < _selectedFiles.Count)
+            _selectedFiles.RemoveAt(index);
+    }
 
     private async Task HandleSubmit()
     {
@@ -80,6 +162,22 @@
         {
             _errorMessage = "You must be logged in to create a ticket.";
             return;
+        }
+
+        if (_captchaConfig is { IsConfigured: true, TicketEnabled: true })
+        {
+            if (_captchaConfig.Provider == "RecaptchaV3")
+            {
+                try { _captchaToken = await JS.InvokeAsync<string>("captchaInterop.executeV3", _captchaConfig.SiteKey); }
+                catch { }
+            }
+
+            var valid = await CaptchaService.VerifyAsync(_captchaToken);
+            if (!valid)
+            {
+                _errorMessage = "CAPTCHA verification failed. Please try again.";
+                return;
+            }
         }
 
         _isSubmitting = true;
@@ -94,7 +192,53 @@
                 Priority = _model.Priority,
                 Body = _model.Body ?? ""
             };
-            await TicketService.CreateAsync(dto);
+            var ticket = await TicketService.CreateAsync(dto);
+
+            if (_selectedFiles.Any() && ticket != null)
+            {
+                var attachments = new List<TicketAttachmentDto>();
+                foreach (var file in _selectedFiles)
+                {
+                    using var ms = new MemoryStream();
+                    await using var stream = file.OpenReadStream(maxAllowedSize: _maxUploadBytes);
+                    await stream.CopyToAsync(ms);
+                    ms.Position = 0;
+
+                    var result = await FileUploadService.UploadTicketAttachmentAsync(ms, file.Name, file.Size, ticket.Id);
+                    if (result.Success && result.Url != null)
+                    {
+                        attachments.Add(new TicketAttachmentDto
+                        {
+                            FileName = file.Name,
+                            Url = result.Url,
+                            Size = file.Size
+                        });
+                    }
+                    else if (!result.Success)
+                    {
+                        _errorMessage = result.Error;
+                        _isSubmitting = false;
+                        return;
+                    }
+                }
+
+                if (attachments.Any())
+                {
+                    var firstMsg = ticket.Messages.FirstOrDefault();
+                    if (firstMsg != null)
+                    {
+                        await TicketService.AddMessageAsync(ticket.Id, new CreateTicketMessageDto
+                        {
+                            SenderId = userId,
+                            SenderName = userName,
+                            IsStaff = false,
+                            Body = "[Attachments uploaded with ticket]",
+                            Attachments = attachments
+                        });
+                    }
+                }
+            }
+
             Navigation.NavigateTo("/my/tickets", forceLoad: true);
         }
         catch (Exception ex)
@@ -105,6 +249,21 @@
         {
             _isSubmitting = false;
         }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes is >= 0 and <= 1023) return $"{bytes} B";
+        if (bytes is >= 1024 and <= 1048575) return $"{bytes / 1024.0:F1} KB";
+        if (bytes is >= 1048576 and <= 1073741823) return $"{bytes / (1024.0 * 1024):F1} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
+    }
+
+    private static string FormatSizeShort(long bytes)
+    {
+        if (bytes is >= 0 and <= 1048575) return $"{bytes / 1024} KB";
+        if (bytes is >= 1048576 and <= 1073741823) return $"{bytes / (1024 * 1024)} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):G3} GB";
     }
 
     private class CreateTicketModel

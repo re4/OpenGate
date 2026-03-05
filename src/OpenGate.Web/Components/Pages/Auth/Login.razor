@@ -1,6 +1,8 @@
 @page "/login"
 @attribute [AllowAnonymous]
 @inject NavigationManager Navigation
+@inject ICaptchaService CaptchaService
+@inject IJSRuntime JS
 
 <PageTitle>Sign in - OpenGate</PageTitle>
 
@@ -14,7 +16,7 @@
             <div class="alert alert-danger">@_errorMessage</div>
         }
 
-        <form method="post" action="/account/login">
+        <form method="post" action="/account/login" id="loginForm">
             <AntiforgeryToken />
 
             <div class="mb-3">
@@ -27,7 +29,22 @@
                 <input id="password" name="password" type="password" class="form-control" required />
             </div>
 
-            <button type="submit" class="btn btn-primary w-100">Sign in</button>
+            @if (_captchaConfig is { IsConfigured: true, LoginEnabled: true })
+            {
+                @if (_captchaConfig.Provider == "RecaptchaV3")
+                {
+                    <input type="hidden" name="captcha-token" id="captcha-token" />
+                }
+                else
+                {
+                    <div class="mb-3">
+                        <div id="login-captcha-container"></div>
+                        <input type="hidden" name="captcha-token" id="captcha-token" />
+                    </div>
+                }
+            }
+
+            <button type="submit" class="btn btn-primary w-100" @onclick="HandleSubmit">Sign in</button>
         </form>
 
         <hr />
@@ -39,12 +56,60 @@
 
 @code {
     private string? _errorMessage;
+    private CaptchaConfig? _captchaConfig;
 
     [SupplyParameterFromQuery(Name = "error")]
     public string? Error { get; set; }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         _errorMessage = Error;
+        _captchaConfig = await CaptchaService.GetConfigAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _captchaConfig is { IsConfigured: true, LoginEnabled: true })
+        {
+            if (_captchaConfig.Provider == "RecaptchaV3")
+            {
+                await Task.Delay(500);
+                try
+                {
+                    var token = await JS.InvokeAsync<string>("captchaInterop.executeV3", _captchaConfig.SiteKey);
+                    await JS.InvokeVoidAsync("eval", $"document.getElementById('captcha-token').value = '{token}'");
+                }
+                catch { }
+            }
+            else
+            {
+                await Task.Delay(500);
+                try
+                {
+                    var dotNetRef = DotNetObjectReference.Create(this);
+                    await JS.InvokeVoidAsync("captchaInterop.render", "login-captcha-container", _captchaConfig.Provider, _captchaConfig.SiteKey, dotNetRef);
+                }
+                catch { }
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnCaptchaCallback(string token)
+    {
+        await JS.InvokeVoidAsync("eval", $"document.getElementById('captcha-token').value = '{token}'");
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (_captchaConfig is { IsConfigured: true, LoginEnabled: true, Provider: "RecaptchaV3" })
+        {
+            try
+            {
+                var token = await JS.InvokeAsync<string>("captchaInterop.executeV3", _captchaConfig.SiteKey);
+                await JS.InvokeVoidAsync("eval", $"document.getElementById('captcha-token').value = '{token}'");
+            }
+            catch { }
+        }
     }
 }

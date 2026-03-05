@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ITicketService TicketService
 @inject AuthenticationStateProvider AuthStateProvider
+@inject FileUploadService FileUploadService
 
 <PageTitle>Ticket @(_ticket?.Subject ?? "") - OpenGate</PageTitle>
 
@@ -55,6 +56,18 @@ else
                     <small class="text-muted">@msg.CreatedAt.ToString("MMM d, yyyy HH:mm")</small>
                 </div>
                 <div class="text-break">@msg.Body</div>
+                @if (msg.Attachments.Any())
+                {
+                    <div class="mt-2">
+                        @foreach (var att in msg.Attachments)
+                        {
+                            <a href="@att.Url" target="_blank" class="d-inline-flex align-items-center gap-1 me-3 small text-decoration-none">
+                                <i class="bi bi-paperclip"></i> @att.FileName
+                                <span class="text-muted">(@FormatSize(att.Size))</span>
+                            </a>
+                        }
+                    </div>
+                }
             </div>
         }
     </div>
@@ -73,6 +86,27 @@ else
                                        placeholder="Type your reply..." />
                         <ValidationMessage For="@(() => _replyModel.Body)" />
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">Attachments <span class="text-muted small">(optional)</span></label>
+                        <InputFile OnChange="HandleFileSelected" multiple accept="image/*,video/*,.txt,.log"
+                                   class="form-control" />
+                        <small class="text-muted">Max @_maxSizeDisplay per file. Allowed: images, videos, .txt, .log</small>
+                    </div>
+                    @if (_selectedFiles.Any())
+                    {
+                        <div class="mb-3">
+                            @foreach (var (file, idx) in _selectedFiles.Select((f, i) => (f, i)))
+                            {
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <i class="bi bi-paperclip"></i>
+                                    <span class="small">@file.Name <span class="text-muted">(@FormatSize(file.Size))</span></span>
+                                    <button type="button" class="btn btn-link btn-sm text-danger p-0" @onclick="() => RemoveFile(idx)">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
                     <button type="submit" class="btn btn-primary" disabled="@_isSubmitting">
                         @if (_isSubmitting)
                         {
@@ -101,9 +135,14 @@ else
     private string? _errorMessage;
     private bool _isOwner;
     private bool _isSubmitting;
+    private List<IBrowserFile> _selectedFiles = new();
+    private long _maxUploadBytes = 1L * 1024 * 1024 * 1024;
+    private string _maxSizeDisplay = "1 GB";
 
     protected override async Task OnInitializedAsync()
     {
+        _maxUploadBytes = await FileUploadService.GetMaxUploadSizeForClientAsync();
+        _maxSizeDisplay = FormatSizeShort(_maxUploadBytes);
         await LoadTicketAsync();
     }
 
@@ -147,6 +186,17 @@ else
         }
     }
 
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFiles = e.GetMultipleFiles(5).ToList();
+    }
+
+    private void RemoveFile(int index)
+    {
+        if (index >= 0 && index < _selectedFiles.Count)
+            _selectedFiles.RemoveAt(index);
+    }
+
     private async Task SendReply()
     {
         if (_ticket == null || string.IsNullOrEmpty(_replyModel.Body)) return;
@@ -166,14 +216,42 @@ else
 
         try
         {
+            var attachments = new List<TicketAttachmentDto>();
+            foreach (var file in _selectedFiles)
+            {
+                using var ms = new MemoryStream();
+                await using var stream = file.OpenReadStream(maxAllowedSize: _maxUploadBytes);
+                await stream.CopyToAsync(ms);
+                ms.Position = 0;
+
+                var result = await FileUploadService.UploadTicketAttachmentAsync(ms, file.Name, file.Size, Id);
+                if (result.Success && result.Url != null)
+                {
+                    attachments.Add(new TicketAttachmentDto
+                    {
+                        FileName = file.Name,
+                        Url = result.Url,
+                        Size = file.Size
+                    });
+                }
+                else if (!result.Success)
+                {
+                    _errorMessage = result.Error;
+                    _isSubmitting = false;
+                    return;
+                }
+            }
+
             await TicketService.AddMessageAsync(Id, new CreateTicketMessageDto
             {
                 SenderId = userId,
                 SenderName = userName,
                 IsStaff = false,
-                Body = _replyModel.Body
+                Body = _replyModel.Body,
+                Attachments = attachments
             });
             _replyModel.Body = "";
+            _selectedFiles.Clear();
             await LoadTicketAsync();
         }
         catch (Exception ex)
@@ -184,6 +262,21 @@ else
         {
             _isSubmitting = false;
         }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes is >= 0 and <= 1023) return $"{bytes} B";
+        if (bytes is >= 1024 and <= 1048575) return $"{bytes / 1024.0:F1} KB";
+        if (bytes is >= 1048576 and <= 1073741823) return $"{bytes / (1024.0 * 1024):F1} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
+    }
+
+    private static string FormatSizeShort(long bytes)
+    {
+        if (bytes is >= 0 and <= 1048575) return $"{bytes / 1024} KB";
+        if (bytes is >= 1048576 and <= 1073741823) return $"{bytes / (1024 * 1024)} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):G3} GB";
     }
 
     private class ReplyModel

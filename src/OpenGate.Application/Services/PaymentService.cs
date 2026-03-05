@@ -7,7 +7,7 @@ using OpenGate.Domain.Interfaces;
 
 namespace OpenGate.Application.Services;
 
-public class PaymentService(IPaymentRepository repository, IMapper mapper) : IPaymentService
+public class PaymentService(IPaymentRepository repository, ISettingRepository settingRepository, IMapper mapper) : IPaymentService
 {
     public async Task<PaymentDto> CreateAsync(CreatePaymentDto dto)
     {
@@ -36,6 +36,8 @@ public class PaymentService(IPaymentRepository repository, IMapper mapper) : IPa
 
     public async Task<PaymentDto?> ProcessPaymentAsync(string invoiceId, string userId, string gateway, decimal amount, string? transactionId = null)
     {
+        var currency = (await settingRepository.GetByKeyAsync("Currency"))?.Value ?? "USD";
+
         var payment = new Payment
         {
             InvoiceId = invoiceId,
@@ -43,7 +45,7 @@ public class PaymentService(IPaymentRepository repository, IMapper mapper) : IPa
             Gateway = gateway,
             TransactionId = transactionId,
             Amount = amount,
-            Currency = "USD",
+            Currency = string.IsNullOrWhiteSpace(currency) ? "USD" : currency.Trim(),
             Status = PaymentStatus.Pending
         };
 

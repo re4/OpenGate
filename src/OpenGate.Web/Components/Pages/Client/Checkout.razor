@@ -5,6 +5,7 @@
 @inject IInvoiceService InvoiceService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject CurrencyProvider CurrencyProvider
 
 <PageTitle>Checkout - OpenGate</PageTitle>
 
@@ -52,15 +53,30 @@ else
                             {
                                 <li class="list-group-item d-flex justify-content-between px-0">
                                     <span>@item.ProductName x @item.Quantity</span>
-                                    <span class="font-mono">@((item.UnitPrice * item.Quantity).ToString("C"))</span>
+                                    <span class="font-mono">@_currency.Format(item.UnitPrice * item.Quantity)</span>
                                 </li>
                             }
                         </ul>
                         <hr />
-                        <div class="d-flex justify-content-between fw-bold fs-5">
-                            <span>Total</span>
-                            <span class="font-mono">@CartService.Total.ToString("C")</span>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>Subtotal</span>
+                            <span class="font-mono">@_currency.Format(CartService.Total)</span>
                         </div>
+                        @if (_currency.TaxEnabled)
+                        {
+                            <div class="d-flex justify-content-between mb-1 text-muted">
+                                <span>@_currency.TaxDisplay@(_currency.TaxInclusive ? " (incl.)" : "")</span>
+                                <span class="font-mono">@_currency.Format(_currency.CalculateTax(CartService.Total))</span>
+                            </div>
+                        }
+                        <div class="d-flex justify-content-between fw-bold fs-5 pt-1">
+                            <span>Total</span>
+                            <span class="font-mono">@_currency.Format(_currency.CalculateTotal(CartService.Total))</span>
+                        </div>
+                        @if (_currency.TaxInclusive && _currency.TaxEnabled)
+                        {
+                            <small class="text-muted d-block mt-1">Prices include @_currency.TaxLabel</small>
+                        }
                     </div>
                     <div class="card-footer">
                         <button type="submit" class="btn btn-primary w-100" disabled="@_isSubmitting">
@@ -79,8 +95,14 @@ else
 
 @code {
     private CheckoutModel _model = new();
+    private CurrencyInfo _currency = new();
     private string? _errorMessage;
     private bool _isSubmitting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currency = await CurrencyProvider.GetAsync();
+    }
 
     private async Task PlaceOrder()
     {

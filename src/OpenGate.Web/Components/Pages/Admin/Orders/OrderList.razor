@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = "Admin")]
 @inject IOrderService OrderService
 @inject UserManager<ApplicationUser> UserManager
+@inject CurrencyProvider CurrencyProvider
 
 <div class="page-header">
     <h1>Orders</h1>
@@ -69,7 +70,7 @@ else
                             <tr>
                                 <td><span class="font-mono">@(order.Id.Length > 12 ? order.Id[..12] + "..." : order.Id)</span></td>
                                 <td>@(user?.FullName ?? user?.Email ?? order.UserId)</td>
-                                <td class="font-mono">@order.Total.ToString("C2")</td>
+                                <td class="font-mono">@_currency.Format(order.Total)</td>
                                 <td><span class="badge badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span></td>
                                 <td>@order.CreatedAt.ToString("MMM d, yyyy HH:mm")</td>
                                 <td>
@@ -87,6 +88,7 @@ else
 @code {
     private List<OrderDto> _orders = new();
     private List<ApplicationUser> _users = new();
+    private CurrencyInfo _currency = new();
     private string _statusFilterStr = "";
     private bool _loading = true;
     private string? _error;
@@ -100,6 +102,7 @@ else
     {
         try
         {
+            _currency = await CurrencyProvider.GetAsync();
             _orders = (await OrderService.GetAllAsync()).OrderByDescending(o => o.CreatedAt).ToList();
             _users = UserManager.Users.ToList();
         }

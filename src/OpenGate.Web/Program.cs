@@ -49,6 +49,12 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddSingleton<ThemeCssProvider>();
 builder.Services.AddSingleton<IThemeCssProvider>(sp => sp.GetRequiredService<ThemeCssProvider>());
+builder.Services.AddSingleton<BrandingProvider>();
+builder.Services.AddSingleton<CurrencyProvider>();
+builder.Services.AddSingleton<IClamAvService, ClamAvService>();
+builder.Services.AddSingleton<ICaptchaService, CaptchaService>();
+builder.Services.AddScoped<FileUploadService>();
+builder.Services.AddHttpClient();
 builder.Services.AddScoped<CartService>();
 builder.Services.AddScoped<IInvoicePdfService, InvoicePdfService>();
 builder.Services.AddScoped<IEmailService, EmailService>();

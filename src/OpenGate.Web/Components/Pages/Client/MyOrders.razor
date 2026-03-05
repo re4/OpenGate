@@ -3,6 +3,7 @@
 @inject IOrderService OrderService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject CurrencyProvider CurrencyProvider
 
 <PageTitle>My Orders - OpenGate</PageTitle>
 
@@ -53,7 +54,7 @@ else
                         <tr>
                             <td><code class="font-mono">@TruncateId(order.Id)</code></td>
                             <td>@GetItemsSummary(order)</td>
-                            <td><span class="font-mono">@order.Total.ToString("C")</span></td>
+                            <td><span class="font-mono">@_currency.Format(order.Total)</span></td>
                             <td>
                                 <span class="badge badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span>
                             </td>
@@ -80,11 +81,13 @@ else
 
 @code {
     private List<OrderDto> _orders = new();
+    private CurrencyInfo _currency = new();
     private bool _loading = true;
     private string? _errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
+        _currency = await CurrencyProvider.GetAsync();
         await LoadOrdersAsync();
     }
 

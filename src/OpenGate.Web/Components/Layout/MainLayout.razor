@@ -1,11 +1,20 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
+@inject BrandingProvider BrandingProvider
 
 <nav class="og-nav navbar navbar-expand-lg navbar-dark">
     <div class="container-fluid px-3">
         <a class="navbar-brand" href="/">
-            <span class="brand-dot"></span> OpenGate
+            @if (_branding.HasLogo)
+            {
+                <img src="@_branding.LogoUrl" alt="@_branding.SiteName" style="height: 24px; margin-right: 0.35rem;" />
+            }
+            else
+            {
+                <span class="brand-dot"></span>
+            }
+            @_branding.SiteName
         </a>
         <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
             <span class="navbar-toggler-icon"></span>
@@ -91,17 +100,20 @@
 </main>
 
 <footer class="og-footer">
-    OpenGate &middot; Open-source billing
+    @_branding.FooterText
 </footer>
 
 @code {
     private string _userName = "";
     private int _cartCount;
+    private BrandingInfo _branding = new();
 
     [Inject] private CartService CartService { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
+        _branding = await BrandingProvider.GetAsync();
+
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         if (user.Identity?.IsAuthenticated == true)

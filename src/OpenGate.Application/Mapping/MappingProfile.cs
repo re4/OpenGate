@@ -39,6 +39,8 @@ public class MappingProfile : Profile
         CreateMap<Ticket, TicketDto>();
         CreateMap<TicketMessage, TicketMessageDto>();
         CreateMap<TicketMessageDto, TicketMessage>();
+        CreateMap<TicketAttachment, TicketAttachmentDto>();
+        CreateMap<TicketAttachmentDto, TicketAttachment>();
         CreateMap<CreateTicketDto, Ticket>()
             .ForMember(dest => dest.Messages, opt => opt.Ignore());
         CreateMap<CreateTicketMessageDto, TicketMessage>();

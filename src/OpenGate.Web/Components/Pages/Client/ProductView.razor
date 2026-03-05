@@ -3,6 +3,7 @@
 @inject IProductService ProductService
 @inject CartService CartService
 @inject NavigationManager Navigation
+@inject CurrencyProvider CurrencyProvider
 
 <PageTitle>@(_product?.Name ?? "Product") - OpenGate</PageTitle>
 
@@ -55,13 +56,13 @@ else
                 <div class="card-body">
                     <h5 class="card-title">Pricing</h5>
                     <div class="mb-2">
-                        <span class="font-mono product-price fs-3">@_calculatedPrice.ToString("C")</span>
+                        <span class="font-mono product-price fs-3">@_currency.Format(_calculatedPrice)</span>
                         <span class="product-cycle">/ @FormatBillingCycle(_product.BillingCycle)</span>
                     </div>
                     @if (_product.SetupFee.HasValue && _product.SetupFee > 0)
                     {
                         <p class="text-muted small mb-2">
-                            Setup fee: <span class="font-mono">@_product.SetupFee.Value.ToString("C")</span>
+                            Setup fee: <span class="font-mono">@_currency.Format(_product.SetupFee.Value)</span>
                         </p>
                     }
 
@@ -103,12 +104,14 @@ else
 
     private ProductDto? _product;
     private decimal _calculatedPrice;
+    private CurrencyInfo _currency = new();
     private Dictionary<string, string> _selectedOptions = new();
     private bool _loading = true;
     private string? _errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
+        _currency = await CurrencyProvider.GetAsync();
         await LoadProductAsync();
     }
 

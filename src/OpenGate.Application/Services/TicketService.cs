@@ -80,6 +80,12 @@ public class TicketService(ITicketRepository repository, IMapper mapper) : ITick
             SenderName = dto.SenderName,
             IsStaff = dto.IsStaff,
             Body = dto.Body,
+            Attachments = dto.Attachments.Select(a => new TicketAttachment
+            {
+                FileName = a.FileName,
+                Url = a.Url,
+                Size = a.Size
+            }).ToList(),
             CreatedAt = DateTime.UtcNow
         };
 

@@ -1,6 +1,12 @@
 @page "/admin/settings"
 @attribute [Authorize(Roles = "Admin")]
 @inject ISettingService SettingService
+@inject BrandingProvider BrandingProvider
+@inject CurrencyProvider CurrencyProvider
+@inject IClamAvService ClamAvService
+@inject ICaptchaService CaptchaService
+@inject IWebHostEnvironment Environment
+@inject FileUploadService FileUploadService
 
 <div class="page-header">
     <h1>Settings</h1>
@@ -179,6 +185,55 @@ else
             ? key[stripPrefix.Length..]
             : key;
 
+        if (key == "LogoUrl")
+        {
+            <div class="mb-3">
+                <label class="form-label fw-medium">Logo</label>
+                <small class="text-muted d-block mb-2">Upload an image or paste a URL. Supports PNG, JPG, GIF, SVG, WebP (max 2 MB).</small>
+
+                @{ var currentLogo = _groupValues.GetValueOrDefault(key, setting.Value); }
+                @if (!string.IsNullOrWhiteSpace(currentLogo))
+                {
+                    <div class="d-flex align-items-center gap-3 mb-3 p-3 rounded" style="background: var(--bg-elevated, #f8f9fa); border: 1px solid var(--border, #dee2e6);">
+                        <img src="@currentLogo" alt="Current logo" style="max-height: 48px; max-width: 200px; object-fit: contain;" />
+                        <div class="flex-grow-1">
+                            <code class="small text-break">@currentLogo</code>
+                        </div>
+                        <button type="button" class="btn btn-outline-danger btn-sm" @onclick="RemoveLogo" @onclick:preventDefault>
+                            <i class="bi bi-trash me-1"></i>Remove
+                        </button>
+                    </div>
+                }
+
+                <div class="row g-2 align-items-end">
+                    <div class="col">
+                        <label class="form-label small text-muted mb-1">Upload file</label>
+                        <InputFile OnChange="HandleLogoUpload" accept="image/*"
+                                   class="form-control" id="logo-upload" />
+                    </div>
+                    <div class="col-auto d-flex align-items-center" style="padding-bottom: 2px;">
+                        <span class="text-muted small fw-medium">or</span>
+                    </div>
+                    <div class="col">
+                        <label class="form-label small text-muted mb-1">Image URL</label>
+                        <input type="text" class="form-control" placeholder="https://example.com/logo.png"
+                               value="@_groupValues.GetValueOrDefault(key, setting.Value)"
+                               @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")" />
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_logoUploadError))
+                {
+                    <div class="text-danger small mt-2"><i class="bi bi-exclamation-circle me-1"></i>@_logoUploadError</div>
+                }
+                @if (_logoUploading)
+                {
+                    <div class="text-muted small mt-2"><span class="spinner-border spinner-border-sm me-1"></span>Uploading...</div>
+                }
+            </div>
+            return;
+        }
+
         <div class="mb-3">
             <label class="form-label fw-medium">@FormatLabel(label)</label>
             @if (!string.IsNullOrEmpty(setting.Description))
@@ -197,6 +252,16 @@ else
                            @onchange="@(e => _groupValues[key] = (e.Value is true ? "true" : "false"))" />
                     <label class="form-check-label text-muted">@(GetBoolValue(key, setting.Value) ? "Enabled" : "Disabled")</label>
                 </div>
+            }
+            else if (IsDropdownField(key))
+            {
+                <select class="form-select" value="@_groupValues.GetValueOrDefault(key, setting.Value)"
+                        @onchange="@(e => _groupValues[key] = e.Value?.ToString() ?? "")">
+                    @foreach (var opt in GetDropdownOptions(key))
+                    {
+                        <option value="@opt.Value">@opt.Label</option>
+                    }
+                </select>
             }
             else
             {
@@ -265,6 +330,10 @@ else
                 if (_groupValues.TryGetValue(setting.Key, out var value))
                     await SettingService.SetValueAsync(setting.Key, value);
             }
+            BrandingProvider.InvalidateCache();
+            CurrencyProvider.InvalidateCache();
+            CaptchaService.InvalidateCache();
+            ((ClamAvService)ClamAvService).InvalidateCache();
             _successMessage = "Settings saved.";
         }
         catch (Exception ex)
@@ -302,11 +371,146 @@ else
     private static bool IsBooleanField(string key) =>
         key.Contains("Enabled", StringComparison.OrdinalIgnoreCase) ||
         key.Contains("Sandbox", StringComparison.OrdinalIgnoreCase) ||
-        key.Contains("UseSsl", StringComparison.OrdinalIgnoreCase);
+        key.Contains("UseSsl", StringComparison.OrdinalIgnoreCase) ||
+        key.Equals("TaxInclusive", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsDropdownField(string key) =>
+        key.Equals("CaptchaProvider", StringComparison.OrdinalIgnoreCase) ||
+        key.Equals("Currency", StringComparison.OrdinalIgnoreCase) ||
+        key.Equals("EmailProvider", StringComparison.OrdinalIgnoreCase);
+
+    private static (string Value, string Label)[] GetDropdownOptions(string key) => key switch
+    {
+        "CaptchaProvider" =>
+        [
+            ("None", "None"),
+            ("RecaptchaV2", "reCAPTCHA v2"),
+            ("RecaptchaV3", "reCAPTCHA v3"),
+            ("HCaptcha", "hCaptcha"),
+            ("Turnstile", "Cloudflare Turnstile")
+        ],
+        "Currency" =>
+        [
+            ("USD", "USD ($) — US Dollar"),
+            ("EUR", "EUR (€) — Euro"),
+            ("GBP", "GBP (£) — British Pound"),
+            ("CAD", "CAD (C$) — Canadian Dollar"),
+            ("AUD", "AUD (A$) — Australian Dollar"),
+            ("JPY", "JPY (¥) — Japanese Yen"),
+            ("CHF", "CHF (Fr) — Swiss Franc"),
+            ("CNY", "CNY (¥) — Chinese Yuan"),
+            ("INR", "INR (₹) — Indian Rupee"),
+            ("BRL", "BRL (R$) — Brazilian Real"),
+            ("MXN", "MXN (Mex$) — Mexican Peso"),
+            ("KRW", "KRW (₩) — South Korean Won"),
+            ("SEK", "SEK (kr) — Swedish Krona"),
+            ("NOK", "NOK (kr) — Norwegian Krone"),
+            ("DKK", "DKK (kr) — Danish Krone"),
+            ("PLN", "PLN (zł) — Polish Złoty"),
+            ("TRY", "TRY (₺) — Turkish Lira"),
+            ("ZAR", "ZAR (R) — South African Rand"),
+            ("SGD", "SGD (S$) — Singapore Dollar"),
+            ("HKD", "HKD (HK$) — Hong Kong Dollar"),
+            ("NZD", "NZD (NZ$) — New Zealand Dollar"),
+            ("CZK", "CZK (Kč) — Czech Koruna"),
+            ("ILS", "ILS (₪) — Israeli Shekel"),
+            ("THB", "THB (฿) — Thai Baht"),
+            ("AED", "AED (د.إ) — UAE Dirham"),
+            ("SAR", "SAR (﷼) — Saudi Riyal"),
+            ("RUB", "RUB (₽) — Russian Ruble"),
+            ("PHP", "PHP (₱) — Philippine Peso"),
+            ("TWD", "TWD (NT$) — Taiwan Dollar"),
+            ("IDR", "IDR (Rp) — Indonesian Rupiah"),
+            ("MYR", "MYR (RM) — Malaysian Ringgit"),
+            ("CLP", "CLP (CL$) — Chilean Peso"),
+            ("ARS", "ARS (AR$) — Argentine Peso"),
+            ("COP", "COP (COL$) — Colombian Peso"),
+            ("EGP", "EGP (E£) — Egyptian Pound"),
+            ("NGN", "NGN (₦) — Nigerian Naira"),
+            ("BGN", "BGN (лв) — Bulgarian Lev"),
+            ("HUF", "HUF (Ft) — Hungarian Forint"),
+            ("RON", "RON (lei) — Romanian Leu"),
+            ("HRK", "HRK (kn) — Croatian Kuna"),
+            ("UAH", "UAH (₴) — Ukrainian Hryvnia")
+        ],
+        "EmailProvider" =>
+        [
+            ("SMTP", "SMTP"),
+            ("SendGrid", "SendGrid")
+        ],
+        _ => []
+    };
 
     private bool GetBoolValue(string key, string fallback)
     {
         var val = _groupValues.GetValueOrDefault(key, fallback);
         return string.Equals(val, "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool _logoUploading;
+    private string? _logoUploadError;
+    private static readonly HashSet<string> AllowedLogoTypes = ["image/png", "image/jpeg", "image/gif", "image/svg+xml", "image/webp", "image/x-icon"];
+
+    private async Task HandleLogoUpload(InputFileChangeEventArgs e)
+    {
+        _logoUploadError = null;
+        _logoUploading = true;
+        StateHasChanged();
+
+        try
+        {
+            var file = e.File;
+            using var ms = new MemoryStream();
+            await using var stream = file.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024);
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            var result = await FileUploadService.UploadLogoAsync(ms, file.Name, file.Size);
+            if (!result.Success)
+            {
+                _logoUploadError = result.Error;
+                return;
+            }
+
+            _groupValues["LogoUrl"] = result.Url!;
+            await SettingService.SetValueAsync("LogoUrl", result.Url!);
+            BrandingProvider.InvalidateCache();
+            _successMessage = "Logo uploaded successfully.";
+        }
+        catch (Exception ex)
+        {
+            _logoUploadError = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
+            _logoUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RemoveLogo()
+    {
+        _logoUploadError = null;
+        try
+        {
+            var uploadsDir = Path.Combine(Environment.WebRootPath, "uploads");
+            if (Directory.Exists(uploadsDir))
+            {
+                foreach (var old in Directory.EnumerateFiles(uploadsDir, "logo.*"))
+                {
+                    try { File.Delete(old); } catch { }
+                }
+            }
+
+            _groupValues["LogoUrl"] = "";
+            await SettingService.SetValueAsync("LogoUrl", "");
+            BrandingProvider.InvalidateCache();
+            _successMessage = "Logo removed.";
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _logoUploadError = $"Remove failed: {ex.Message}";
+        }
     }
 }

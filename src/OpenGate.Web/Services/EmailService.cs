@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Identity;
 using OpenGate.Application.Interfaces;
 using OpenGate.Domain.Entities;
 using OpenGate.Domain.Interfaces;
+using SendGrid;
+using SendGrid.Helpers.Mail;
 
 namespace OpenGate.Web.Services;
 
@@ -19,40 +21,78 @@ public class EmailService(
     {
         try
         {
-            var smtpHost = (await settingRepo.GetByKeyAsync("SmtpHost"))?.Value;
-            var smtpPort = (await settingRepo.GetByKeyAsync("SmtpPort"))?.Value ?? "587";
-            var smtpUser = (await settingRepo.GetByKeyAsync("SmtpUser"))?.Value;
-            var smtpPass = (await settingRepo.GetByKeyAsync("SmtpPassword"))?.Value;
-            var fromEmail = (await settingRepo.GetByKeyAsync("SmtpFrom"))?.Value ?? "noreply@opengate.local";
+            var provider = (await settingRepo.GetByKeyAsync("EmailProvider"))?.Value ?? "SMTP";
+            var fromEmail = (await settingRepo.GetByKeyAsync("EmailFromAddress"))?.Value ?? "noreply@opengate.local";
+            var fromName = (await settingRepo.GetByKeyAsync("EmailFromName"))?.Value ?? "OpenGate";
             var siteName = (await settingRepo.GetByKeyAsync("SiteName"))?.Value ?? "OpenGate";
 
-            if (string.IsNullOrEmpty(smtpHost))
-            {
-                logger.LogWarning("SMTP not configured. Email to {To} not sent: {Subject}", to, subject);
-                return;
-            }
+            var wrappedBody = WrapInTemplate(htmlBody, siteName);
 
-            using var client = new SmtpClient(smtpHost, int.Parse(smtpPort))
-            {
-                Credentials = new NetworkCredential(smtpUser, smtpPass),
-                EnableSsl = true
-            };
+            if (provider.Equals("SendGrid", StringComparison.OrdinalIgnoreCase))
+                await SendViaSendGridAsync(to, subject, wrappedBody, fromEmail, fromName);
+            else
+                await SendViaSmtpAsync(to, subject, wrappedBody, fromEmail, fromName);
 
-            var message = new MailMessage
-            {
-                From = new MailAddress(fromEmail, siteName),
-                Subject = subject,
-                Body = WrapInTemplate(htmlBody, siteName),
-                IsBodyHtml = true
-            };
-            message.To.Add(to);
-
-            await client.SendMailAsync(message);
-            logger.LogInformation("Email sent to {To}: {Subject}", to, subject);
+            logger.LogInformation("Email sent via {Provider} to {To}: {Subject}", provider, to, subject);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to send email to {To}: {Subject}", to, subject);
+        }
+    }
+
+    private async Task SendViaSmtpAsync(string to, string subject, string htmlBody, string fromEmail, string fromName)
+    {
+        var smtpHost = (await settingRepo.GetByKeyAsync("SmtpHost"))?.Value;
+        var smtpPort = (await settingRepo.GetByKeyAsync("SmtpPort"))?.Value ?? "587";
+        var smtpUser = (await settingRepo.GetByKeyAsync("SmtpUsername"))?.Value;
+        var smtpPass = (await settingRepo.GetByKeyAsync("SmtpPassword"))?.Value;
+        var useSsl = (await settingRepo.GetByKeyAsync("SmtpUseSsl"))?.Value ?? "true";
+
+        if (string.IsNullOrEmpty(smtpHost))
+        {
+            logger.LogWarning("SMTP not configured. Email to {To} not sent: {Subject}", to, subject);
+            return;
+        }
+
+        using var client = new SmtpClient(smtpHost, int.Parse(smtpPort))
+        {
+            Credentials = new NetworkCredential(smtpUser, smtpPass),
+            EnableSsl = string.Equals(useSsl, "true", StringComparison.OrdinalIgnoreCase)
+        };
+
+        var message = new MailMessage
+        {
+            From = new MailAddress(fromEmail, fromName),
+            Subject = subject,
+            Body = htmlBody,
+            IsBodyHtml = true
+        };
+        message.To.Add(to);
+
+        await client.SendMailAsync(message);
+    }
+
+    private async Task SendViaSendGridAsync(string to, string subject, string htmlBody, string fromEmail, string fromName)
+    {
+        var apiKey = (await settingRepo.GetByKeyAsync("SendGridApiKey"))?.Value;
+
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            logger.LogWarning("SendGrid API key not configured. Email to {To} not sent: {Subject}", to, subject);
+            return;
+        }
+
+        var client = new SendGridClient(apiKey);
+        var from = new EmailAddress(fromEmail, fromName);
+        var toAddr = new EmailAddress(to);
+        var msg = MailHelper.CreateSingleEmail(from, toAddr, subject, null, htmlBody);
+
+        var response = await client.SendEmailAsync(msg);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Body.ReadAsStringAsync();
+            throw new InvalidOperationException($"SendGrid returned {response.StatusCode}: {body}");
         }
     }
 

@@ -4,6 +4,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject FileUploadService FileUploadService
 
 <div class="page-header d-flex justify-content-between align-items-start flex-wrap gap-2">
     <h1>@(_ticket != null ? _ticket.Subject : "Ticket")</h1>
@@ -68,6 +69,18 @@ else
                                     <small class="text-muted">@msg.CreatedAt.ToString("MMM d, HH:mm")</small>
                                 </div>
                                 <div class="small">@msg.Body</div>
+                                @if (msg.Attachments.Any())
+                                {
+                                    <div class="mt-2">
+                                        @foreach (var att in msg.Attachments)
+                                        {
+                                            <a href="@att.Url" target="_blank" class="d-inline-flex align-items-center gap-1 me-3 small text-decoration-none">
+                                                <i class="bi bi-paperclip"></i> @att.FileName
+                                                <span class="text-muted">(@FormatSize(att.Size))</span>
+                                            </a>
+                                        }
+                                    </div>
+                                }
                             </div>
                         }
                     }
@@ -88,6 +101,26 @@ else
                         <div class="mb-3">
                             <textarea class="form-control" rows="4" placeholder="Type your reply..." @bind="_reply"></textarea>
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Attachments (optional)</label>
+                            <InputFile OnChange="HandleFileSelected" multiple accept="image/*,video/*,.txt,.log"
+                                       class="form-control" />
+                        </div>
+                        @if (_selectedFiles.Any())
+                        {
+                            <div class="mb-3">
+                                @foreach (var (file, idx) in _selectedFiles.Select((f, i) => (f, i)))
+                                {
+                                    <div class="d-flex align-items-center gap-2 mb-1">
+                                        <i class="bi bi-paperclip"></i>
+                                        <span class="small">@file.Name <span class="text-muted">(@FormatSize(file.Size))</span></span>
+                                        <button type="button" class="btn btn-link btn-sm text-danger p-0" @onclick="() => RemoveFile(idx)">
+                                            <i class="bi bi-x-circle"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
                         <div class="d-flex gap-2">
                             <button type="button" class="btn btn-primary" @onclick="SendReply" disabled="@(_sending || string.IsNullOrWhiteSpace(_reply))">
                                 @if (_sending) { <span class="spinner-border spinner-border-sm me-1"></span> }
@@ -140,11 +173,16 @@ else
     private bool _loading = true;
     private bool _sending;
     private string? _error;
+    private List<IBrowserFile> _selectedFiles = new();
+    private long _maxUploadBytes = 1L * 1024 * 1024 * 1024;
+    private string _maxSizeDisplay = "1 GB";
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
+            _maxUploadBytes = await FileUploadService.GetMaxUploadSizeForClientAsync();
+            _maxSizeDisplay = FormatSizeShort(_maxUploadBytes);
             _ticket = await TicketService.GetByIdAsync(Id);
             if (_ticket != null)
             {
@@ -161,6 +199,17 @@ else
         }
     }
 
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFiles = e.GetMultipleFiles(5).ToList();
+    }
+
+    private void RemoveFile(int index)
+    {
+        if (index >= 0 && index < _selectedFiles.Count)
+            _selectedFiles.RemoveAt(index);
+    }
+
     private async Task SendReply()
     {
         if (_ticket == null || string.IsNullOrWhiteSpace(_reply)) return;
@@ -173,15 +222,43 @@ else
             var userId = currentUser.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
             var userName = currentUser.Identity?.Name ?? "Staff";
 
+            var attachments = new List<TicketAttachmentDto>();
+            foreach (var file in _selectedFiles)
+            {
+                using var ms = new MemoryStream();
+                await using var stream = file.OpenReadStream(maxAllowedSize: _maxUploadBytes);
+                await stream.CopyToAsync(ms);
+                ms.Position = 0;
+
+                var result = await FileUploadService.UploadTicketAttachmentAsync(ms, file.Name, file.Size, Id);
+                if (result.Success && result.Url != null)
+                {
+                    attachments.Add(new TicketAttachmentDto
+                    {
+                        FileName = file.Name,
+                        Url = result.Url,
+                        Size = file.Size
+                    });
+                }
+                else if (!result.Success)
+                {
+                    _error = result.Error;
+                    _sending = false;
+                    return;
+                }
+            }
+
             await TicketService.AddMessageAsync(Id, new CreateTicketMessageDto
             {
                 SenderId = userId,
                 SenderName = userName,
                 IsStaff = true,
-                Body = _reply.Trim()
+                Body = _reply.Trim(),
+                Attachments = attachments
             });
             _ticket = await TicketService.GetByIdAsync(Id);
             _reply = "";
+            _selectedFiles.Clear();
         }
         catch (Exception ex)
         {
@@ -210,5 +287,20 @@ else
         {
             _sending = false;
         }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes is >= 0 and <= 1023) return $"{bytes} B";
+        if (bytes is >= 1024 and <= 1048575) return $"{bytes / 1024.0:F1} KB";
+        if (bytes is >= 1048576 and <= 1073741823) return $"{bytes / (1024.0 * 1024):F1} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
+    }
+
+    private static string FormatSizeShort(long bytes)
+    {
+        if (bytes is >= 0 and <= 1048575) return $"{bytes / 1024} KB";
+        if (bytes is >= 1048576 and <= 1073741823) return $"{bytes / (1024 * 1024)} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):G3} GB";
     }
 }

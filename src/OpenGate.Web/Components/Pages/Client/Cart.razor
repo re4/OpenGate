@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject CartService CartService
 @inject NavigationManager Navigation
+@inject CurrencyProvider CurrencyProvider
 
 <PageTitle>Cart - OpenGate</PageTitle>
 
@@ -53,13 +54,13 @@ else
                                     }
                                 </td>
                                 <td>@FormatBillingCycle(item.BillingCycle)</td>
-                                <td><span class="font-mono">@item.UnitPrice.ToString("C")</span></td>
+                                <td><span class="font-mono">@_currency.Format(item.UnitPrice)</span></td>
                                 <td>
                                     <input type="number" class="form-control form-control-sm" style="width: 70px;"
                                            min="1" value="@item.Quantity"
                                            @onchange="e => UpdateQty(index, e)" />
                                 </td>
-                                <td><span class="font-mono">@((item.UnitPrice * item.Quantity).ToString("C"))</span></td>
+                                <td><span class="font-mono">@_currency.Format(item.UnitPrice * item.Quantity)</span></td>
                                 <td>
                                     <button type="button" class="btn btn-outline-danger btn-sm"
                                             @onclick='() => RemoveItem(index)'>
@@ -73,7 +74,7 @@ else
             </div>
         </div>
         <div class="card-footer d-flex justify-content-between align-items-center">
-            <div class="fw-bold fs-5">Total: <span class="font-mono">@CartService.Total.ToString("C")</span></div>
+            <div class="fw-bold fs-5">Total: <span class="font-mono">@_currency.Format(CartService.Total)</span></div>
             <div class="d-flex gap-2">
                 <a href="/store" class="btn btn-outline-secondary">Continue shopping</a>
                 <a href="/checkout" class="btn btn-primary">Checkout</a>
@@ -83,6 +84,13 @@ else
 }
 
 @code {
+    private CurrencyInfo _currency = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currency = await CurrencyProvider.GetAsync();
+    }
+
     private void UpdateQty(int index, ChangeEventArgs e)
     {
         if (int.TryParse(e.Value?.ToString(), out var qty) && qty > 0)

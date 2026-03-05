@@ -6,7 +6,7 @@ using QuestPDF.Infrastructure;
 
 namespace OpenGate.Web.Services;
 
-public class InvoicePdfService(IInvoiceRepository invoiceRepo, ISettingRepository settingRepo) : IInvoicePdfService
+public class InvoicePdfService(IInvoiceRepository invoiceRepo, ISettingRepository settingRepo, CurrencyProvider currencyProvider) : IInvoicePdfService
 {
     public async Task<byte[]> GeneratePdfAsync(string invoiceId)
     {
@@ -14,7 +14,9 @@ public class InvoicePdfService(IInvoiceRepository invoiceRepo, ISettingRepositor
             ?? throw new InvalidOperationException("Invoice not found");
 
         var siteName = (await settingRepo.GetByKeyAsync("SiteName"))?.Value ?? "OpenGate";
-        var currency = (await settingRepo.GetByKeyAsync("Currency"))?.Value ?? "USD";
+        var currencyInfo = await currencyProvider.GetAsync();
+        var currencySymbol = currencyInfo.Symbol;
+        var currency = !string.IsNullOrWhiteSpace(invoice.Currency) ? invoice.Currency : currencyInfo.CurrencyCode;
 
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -75,9 +77,9 @@ public class InvoicePdfService(IInvoiceRepository invoiceRepo, ISettingRepositor
                             table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(5)
                                 .Text(line.Quantity.ToString());
                             table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(5)
-                                .Text($"{line.UnitPrice:F2} {currency}");
+                                .Text($"{currencySymbol}{line.UnitPrice:F2} {currency}");
                             table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(5)
-                                .Text($"{line.Total:F2} {currency}");
+                                .Text($"{currencySymbol}{line.Total:F2} {currency}");
                         }
                     });
 
@@ -86,22 +88,26 @@ public class InvoicePdfService(IInvoiceRepository invoiceRepo, ISettingRepositor
                         totals.Item().Row(row =>
                         {
                             row.RelativeItem().AlignRight().Text("Subtotal:").Bold();
-                            row.ConstantItem(120).AlignRight().Text($"{invoice.Subtotal:F2} {currency}");
+                            row.ConstantItem(120).AlignRight().Text($"{currencySymbol}{invoice.Subtotal:F2} {currency}");
                         });
 
                         if (invoice.Tax > 0)
                         {
+                            var taxLabel = !string.IsNullOrWhiteSpace(invoice.TaxLabel) ? invoice.TaxLabel : "Tax";
+                            var taxDisplay = invoice.TaxRate > 0
+                                ? $"{taxLabel} ({invoice.TaxRate:G}%){(invoice.TaxInclusive ? " incl." : "")}:"
+                                : $"{taxLabel}:";
                             totals.Item().Row(row =>
                             {
-                                row.RelativeItem().AlignRight().Text("Tax:");
-                                row.ConstantItem(120).AlignRight().Text($"{invoice.Tax:F2} {currency}");
+                                row.RelativeItem().AlignRight().Text(taxDisplay);
+                                row.ConstantItem(120).AlignRight().Text($"{currencySymbol}{invoice.Tax:F2} {currency}");
                             });
                         }
 
                         totals.Item().PaddingTop(5).Row(row =>
                         {
                             row.RelativeItem().AlignRight().Text("Total:").Bold().FontSize(14);
-                            row.ConstantItem(120).AlignRight().Text($"{invoice.Total:F2} {currency}")
+                            row.ConstantItem(120).AlignRight().Text($"{currencySymbol}{invoice.Total:F2} {currency}")
                                 .Bold().FontSize(14).FontColor(Colors.Indigo.Medium);
                         });
                     });

@@ -1,6 +1,7 @@
 @page "/admin"
 @attribute [Authorize(Roles = "Admin")]
 @inject IDashboardService DashboardService
+@inject CurrencyProvider CurrencyProvider
 
 <div class="page-header">
     <h1>Dashboard</h1>
@@ -26,7 +27,7 @@ else
                 <div class="card-body">
                     <span class="stat-icon"><i class="bi bi-currency-dollar"></i></span>
                     <div class="stat-label">Total Revenue</div>
-                    <div class="stat-value font-mono">@_stats.TotalRevenue.ToString("C2")</div>
+                    <div class="stat-value font-mono">@_currency.Format(_stats.TotalRevenue)</div>
                 </div>
             </div>
         </div>
@@ -84,7 +85,7 @@ else
                                     {
                                         <tr>
                                             <td><span class="font-mono">@(order.Id.Length > 12 ? order.Id[..12] + "..." : order.Id)</span></td>
-                                            <td class="font-mono">@order.Total.ToString("C2")</td>
+                                            <td class="font-mono">@_currency.Format(order.Total)</td>
                                             <td><span class="badge badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span></td>
                                             <td>@order.CreatedAt.ToString("MMM d, yyyy")</td>
                                             <td>
@@ -119,7 +120,7 @@ else
                             {
                                 <li class="list-group-item d-flex justify-content-between align-items-center px-0">
                                     <span>@month.Month</span>
-                                    <span class="fw-semibold font-mono">@month.Amount.ToString("C2")</span>
+                                    <span class="fw-semibold font-mono">@_currency.Format(month.Amount)</span>
                                 </li>
                             }
                         </ul>
@@ -139,6 +140,7 @@ else
 
 @code {
     private DashboardStatsDto _stats = new();
+    private CurrencyInfo _currency = new();
     private bool _loading = true;
     private string? _error;
 
@@ -146,6 +148,7 @@ else
     {
         try
         {
+            _currency = await CurrencyProvider.GetAsync();
             _stats = await DashboardService.GetStatsAsync();
         }
         catch (Exception ex)

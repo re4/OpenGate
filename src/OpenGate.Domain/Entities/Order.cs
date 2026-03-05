@@ -7,7 +7,10 @@ public class Order : BaseEntity
     public string UserId { get; set; } = string.Empty;
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
     public List<OrderItem> Items { get; set; } = new();
+    public decimal Subtotal { get; set; }
+    public decimal Tax { get; set; }
     public decimal Total { get; set; }
+    public string Currency { get; set; } = "USD";
     public string? Notes { get; set; }
     public string? ProvisioningId { get; set; } // external server ID
     public DateTime? NextDueDate { get; set; }

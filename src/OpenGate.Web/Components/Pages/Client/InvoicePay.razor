@@ -3,6 +3,7 @@
 @inject IInvoiceService InvoiceService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject CurrencyProvider CurrencyProvider
 
 <PageTitle>Pay Invoice - OpenGate</PageTitle>
 
@@ -35,7 +36,7 @@ else
 
     <div class="card">
         <div class="card-body">
-            <p class="mb-2">Amount due: <strong class="font-mono">@_invoice.Total.ToString("C")</strong></p>
+            <p class="mb-2">Amount due: <strong class="font-mono">@_currency.Format(_invoice.Total)</strong></p>
             <p class="text-muted small mb-4">Due date: @_invoice.DueDate.ToString("MMM d, yyyy")</p>
             <div class="alert alert-info">
                 Payment gateway integration is not yet configured. Please contact support to complete payment.
@@ -49,11 +50,13 @@ else
     [Parameter] public string Id { get; set; } = string.Empty;
 
     private InvoiceDto? _invoice;
+    private CurrencyInfo _currency = new();
     private bool _loading = true;
     private bool _isOwner;
 
     protected override async Task OnInitializedAsync()
     {
+        _currency = await CurrencyProvider.GetAsync();
         await LoadInvoiceAsync();
     }
 

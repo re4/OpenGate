@@ -13,6 +13,10 @@ public class InvoiceDto
     public decimal Subtotal { get; set; }
     public decimal Tax { get; set; }
     public decimal Total { get; set; }
+    public string Currency { get; set; } = "USD";
+    public string TaxLabel { get; set; } = "Tax";
+    public decimal TaxRate { get; set; }
+    public bool TaxInclusive { get; set; }
     public DateTime DueDate { get; set; }
     public DateTime? PaidAt { get; set; }
     public string? Notes { get; set; }

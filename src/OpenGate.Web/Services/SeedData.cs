@@ -60,19 +60,44 @@ public static class SeedData
             new() { Key = "SiteUrl", Value = "https://localhost", Description = "Public URL of this installation", Group = "General" },
             new() { Key = "CompanyName", Value = "My Company", Description = "Company name used on invoices and emails", Group = "General" },
             new() { Key = "CompanyAddress", Value = "", Description = "Company address shown on invoices", Group = "General" },
-            new() { Key = "Currency", Value = "USD", Description = "Default currency code (e.g. USD, EUR, GBP)", Group = "General" },
-            new() { Key = "CurrencySymbol", Value = "$", Description = "Currency symbol displayed alongside prices", Group = "General" },
+            new() { Key = "Currency", Value = "USD", Description = "Default currency for prices and invoices", Group = "General" },
             new() { Key = "TaxRate", Value = "0", Description = "Tax rate percentage applied to invoices (0 = disabled)", Group = "General" },
+            new() { Key = "TaxLabel", Value = "Tax", Description = "Label for the tax line on invoices (e.g. Tax, VAT, GST)", Group = "General" },
+            new() { Key = "TaxInclusive", Value = "false", Description = "Whether product prices already include tax", Group = "General" },
+            new() { Key = "LogoUrl", Value = "", Description = "URL to a logo image displayed in the navbar (leave empty for text-only branding)", Group = "General" },
+            new() { Key = "FooterText", Value = "", Description = "Custom footer text (leave empty to show site name)", Group = "General" },
             new() { Key = "TermsOfServiceUrl", Value = "", Description = "Link to terms of service page (optional)", Group = "General" },
 
-            // Email / SMTP
+            // Uploads
+            new() { Key = "MaxUploadSizeGB", Value = "1", Description = "Maximum file upload size in GB (applies to ticket attachments)", Group = "General" },
+
+            // ClamAV
+            new() { Key = "ClamAvEnabled", Value = "false", Description = "Enable ClamAV antivirus scanning on file uploads", Group = "General" },
+            new() { Key = "ClamAvHost", Value = "127.0.0.1", Description = "ClamAV daemon (clamd) hostname", Group = "General" },
+            new() { Key = "ClamAvPort", Value = "3310", Description = "ClamAV daemon (clamd) TCP port", Group = "General" },
+
+            // CAPTCHA
+            new() { Key = "CaptchaProvider", Value = "None", Description = "CAPTCHA provider: None, RecaptchaV2, RecaptchaV3, HCaptcha, Turnstile", Group = "General" },
+            new() { Key = "CaptchaSiteKey", Value = "", Description = "CAPTCHA site/public key", Group = "General" },
+            new() { Key = "CaptchaSecretKey", Value = "", Description = "CAPTCHA secret/private key", Group = "General" },
+            new() { Key = "CaptchaLoginEnabled", Value = "false", Description = "Show CAPTCHA on login page", Group = "General" },
+            new() { Key = "CaptchaRegisterEnabled", Value = "false", Description = "Show CAPTCHA on registration page", Group = "General" },
+            new() { Key = "CaptchaTicketEnabled", Value = "false", Description = "Show CAPTCHA on ticket creation", Group = "General" },
+
+            // Email
+            new() { Key = "EmailProvider", Value = "SMTP", Description = "Email delivery provider: SMTP or SendGrid", Group = "Email" },
+            new() { Key = "EmailFromAddress", Value = "noreply@opengate.local", Description = "From address for outgoing emails", Group = "Email" },
+            new() { Key = "EmailFromName", Value = "OpenGate", Description = "From display name for outgoing emails", Group = "Email" },
+
+            // Email – SMTP
             new() { Key = "SmtpHost", Value = "", Description = "SMTP server hostname", Group = "Email" },
             new() { Key = "SmtpPort", Value = "587", Description = "SMTP server port", Group = "Email" },
             new() { Key = "SmtpUsername", Value = "", Description = "SMTP authentication username", Group = "Email" },
             new() { Key = "SmtpPassword", Value = "", Description = "SMTP authentication password", Group = "Email" },
-            new() { Key = "SmtpFromAddress", Value = "noreply@opengate.local", Description = "From address for outgoing emails", Group = "Email" },
-            new() { Key = "SmtpFromName", Value = "OpenGate", Description = "From display name for outgoing emails", Group = "Email" },
             new() { Key = "SmtpUseSsl", Value = "true", Description = "Enable TLS/SSL for SMTP connection", Group = "Email" },
+
+            // Email – SendGrid
+            new() { Key = "SendGridApiKey", Value = "", Description = "SendGrid API key for email delivery", Group = "Email" },
 
             // Payment
             new() { Key = "StripeEnabled", Value = "false", Description = "Enable Stripe payment gateway", Group = "Payment" },
@@ -138,6 +163,14 @@ public static class SeedData
             {
                 await repository.CreateAsync(setting);
             }
+        }
+
+        string[] deprecated = ["CurrencySymbol", "SmtpFromAddress", "SmtpFromName", "SmtpFrom", "SmtpUser"];
+        foreach (var key in deprecated)
+        {
+            var old = existing.FirstOrDefault(s => s.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
+            if (old != null)
+                await repository.DeleteAsync(old.Id);
         }
     }
 

@@ -4,6 +4,7 @@
 @inject ICategoryService CategoryService
 @inject CartService CartService
 @inject NavigationManager Navigation
+@inject CurrencyProvider CurrencyProvider
 
 <PageTitle>Store - OpenGate</PageTitle>
 
@@ -57,7 +58,7 @@ else
                             </p>
                             <div class="d-flex align-items-end justify-content-between">
                                 <div>
-                                    <span class="product-price">@product.Price.ToString("C")</span>
+                                    <span class="product-price">@_currency.Format(product.Price)</span>
                                     <span class="product-cycle">/ @FormatCycle(product.BillingCycle)</span>
                                 </div>
                                 <button type="button" class="btn btn-primary btn-sm"
@@ -87,9 +88,14 @@ else
     private List<ProductDto> _products = new();
     private string? _selectedCategoryId;
     private bool _loading = true;
+    private CurrencyInfo _currency = new();
     private string? _errorMessage;
 
-    protected override async Task OnInitializedAsync() => await LoadDataAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        _currency = await CurrencyProvider.GetAsync();
+        await LoadDataAsync();
+    }
 
     private async Task LoadDataAsync()
     {

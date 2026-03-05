@@ -7,7 +7,7 @@ using OpenGate.Domain.Interfaces;
 
 namespace OpenGate.Application.Services;
 
-public class OrderService(IOrderRepository orderRepository, IProductRepository productRepository, IMapper mapper) : IOrderService
+public class OrderService(IOrderRepository orderRepository, IProductRepository productRepository, ISettingRepository settingRepository, IMapper mapper) : IOrderService
 {
     public async Task<OrderDto?> GetByIdAsync(string id)
     {
@@ -47,8 +47,15 @@ public class OrderService(IOrderRepository orderRepository, IProductRepository p
 
     private async Task<Order> CreateOrderFromItemsAsync(string userId, List<CartItemDto> items, string? notes)
     {
+        var currency = (await settingRepository.GetByKeyAsync("Currency"))?.Value ?? "USD";
+        var taxRateStr = (await settingRepository.GetByKeyAsync("TaxRate"))?.Value ?? "0";
+        var taxInclusiveStr = (await settingRepository.GetByKeyAsync("TaxInclusive"))?.Value ?? "false";
+
+        decimal.TryParse(taxRateStr, out var taxRate);
+        var taxInclusive = string.Equals(taxInclusiveStr, "true", StringComparison.OrdinalIgnoreCase);
+
         var orderItems = new List<OrderItem>();
-        decimal total = 0;
+        decimal subtotal = 0;
 
         foreach (var item in items)
         {
@@ -57,7 +64,7 @@ public class OrderService(IOrderRepository orderRepository, IProductRepository p
 
             var unitPrice = item.UnitPrice > 0 ? item.UnitPrice : product.Price;
             var itemTotal = unitPrice * item.Quantity;
-            total += itemTotal;
+            subtotal += itemTotal;
 
             orderItems.Add(new OrderItem
             {
@@ -71,12 +78,38 @@ public class OrderService(IOrderRepository orderRepository, IProductRepository p
             });
         }
 
+        decimal tax;
+        decimal total;
+
+        if (taxRate > 0)
+        {
+            if (taxInclusive)
+            {
+                tax = subtotal - (subtotal / (1 + taxRate / 100));
+                tax = Math.Round(tax, 2);
+                total = subtotal;
+            }
+            else
+            {
+                tax = Math.Round(subtotal * taxRate / 100, 2);
+                total = subtotal + tax;
+            }
+        }
+        else
+        {
+            tax = 0;
+            total = subtotal;
+        }
+
         var order = new Order
         {
             UserId = userId,
             Status = OrderStatus.Pending,
             Items = orderItems,
+            Subtotal = subtotal,
+            Tax = tax,
             Total = total,
+            Currency = string.IsNullOrWhiteSpace(currency) ? "USD" : currency.Trim(),
             Notes = notes
         };
 

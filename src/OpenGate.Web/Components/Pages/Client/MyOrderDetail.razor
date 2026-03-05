@@ -4,6 +4,7 @@
 @inject IInvoiceService InvoiceService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject CurrencyProvider CurrencyProvider
 
 <PageTitle>Order @(_order?.Id ?? "") - OpenGate</PageTitle>
 
@@ -72,16 +73,29 @@ else
                                 <tr>
                                     <td>@item.ProductName</td>
                                     <td>@item.Quantity</td>
-                                    <td><span class="font-mono">@item.UnitPrice.ToString("C")</span></td>
-                                    <td><span class="font-mono">@item.Total.ToString("C")</span></td>
+                                    <td><span class="font-mono">@_currency.Format(item.UnitPrice)</span></td>
+                                    <td><span class="font-mono">@_currency.Format(item.Total)</span></td>
                                 </tr>
                             }
                         </tbody>
                     </table>
                 </div>
-                <div class="card-footer d-flex justify-content-between">
-                    <span class="fw-bold">Total</span>
-                    <span class="fw-bold font-mono">@_order.Total.ToString("C")</span>
+                <div class="card-footer">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Subtotal</span>
+                        <span class="font-mono">@_currency.Format(_order.Subtotal)</span>
+                    </div>
+                    @if (_order.Tax > 0)
+                    {
+                        <div class="d-flex justify-content-between mb-1 text-muted">
+                            <span>@_currency.TaxDisplay</span>
+                            <span class="font-mono">@_currency.Format(_order.Tax)</span>
+                        </div>
+                    }
+                    <div class="d-flex justify-content-between fw-bold">
+                        <span>Total</span>
+                        <span class="font-mono">@_currency.Format(_order.Total)</span>
+                    </div>
                 </div>
             </div>
 
@@ -134,12 +148,14 @@ else
 
     private OrderDto? _order;
     private List<InvoiceDto> _invoices = new();
+    private CurrencyInfo _currency = new();
     private bool _loading = true;
     private string? _errorMessage;
     private bool _isOwner;
 
     protected override async Task OnInitializedAsync()
     {
+        _currency = await CurrencyProvider.GetAsync();
         await LoadDataAsync();
     }
 

@@ -3,15 +3,21 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IOrderService OrderService
 @inject ITicketService TicketService
+@inject BrandingProvider BrandingProvider
+@inject CurrencyProvider CurrencyProvider
 
 <AuthorizeView>
     <NotAuthorized>
         <div class="py-5">
+            @if (_branding.HasLogo)
+            {
+                <img src="@_branding.LogoUrl" alt="@_branding.SiteName" style="height: 48px; margin-bottom: 1rem;" />
+            }
             <h1 style="font-size: 2rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0.5rem;">
-                OpenGate
+                @_branding.SiteName
             </h1>
             <p class="text-muted" style="font-size: 1rem; max-width: 420px; margin-bottom: 2rem;">
-                Self-hosted billing and provisioning for hosting providers.
+                Browse our products and services to get started.
             </p>
             <div class="d-flex gap-2">
                 <a href="/store" class="btn btn-primary">Browse store</a>
@@ -84,7 +90,7 @@
                                 <tr style="cursor:pointer" @onclick='() => Nav.NavigateTo($"/my/orders/{order.Id}")'>
                                     <td><code>@order.Id[..8]</code></td>
                                     <td>@(order.Items.Count) item@(order.Items.Count != 1 ? "s" : "")</td>
-                                    <td class="font-mono">@order.Total.ToString("C2")</td>
+                                    <td class="font-mono">@_currency.Format(order.Total)</td>
                                     <td><span class="badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span></td>
                                     <td class="text-muted">@order.CreatedAt.ToString("MMM d")</td>
                                 </tr>
@@ -104,9 +110,14 @@
     private int _activeOrders;
     private int _openTicketsCount;
     private List<OrderDto> _recentOrders = new();
+    private BrandingInfo _branding = new();
+    private CurrencyInfo _currency = new();
 
     protected override async Task OnInitializedAsync()
     {
+        _branding = await BrandingProvider.GetAsync();
+        _currency = await CurrencyProvider.GetAsync();
+
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
 
