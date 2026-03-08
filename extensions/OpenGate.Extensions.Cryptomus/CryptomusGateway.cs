@@ -80,7 +80,7 @@ public class CryptomusGateway : IPaymentGateway
         }
         catch (Exception ex)
         {
-            return new PaymentResult { Success = false, ErrorMessage = ex.Message };
+            return new PaymentResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -117,7 +117,7 @@ public class CryptomusGateway : IPaymentGateway
         }
         catch (Exception ex)
         {
-            return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = ex.Message };
+            return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -141,12 +141,17 @@ public class CryptomusGateway : IPaymentGateway
     {
         try
         {
+            if (string.IsNullOrEmpty(_apiKey))
+                return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
+
             using var doc = JsonDocument.Parse(payload);
             var root = doc.RootElement;
 
             var receivedSign = root.TryGetProperty("sign", out var signProp) ? signProp.GetString() : null;
 
-            if (!string.IsNullOrEmpty(_apiKey) && !string.IsNullOrEmpty(receivedSign))
+            if (string.IsNullOrEmpty(receivedSign))
+                return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
+
             {
                 var mutable = new Dictionary<string, JsonElement>();
                 foreach (var prop in root.EnumerateObject())

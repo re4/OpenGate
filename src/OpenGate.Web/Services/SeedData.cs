@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using OpenGate.Domain.Entities;
+using OpenGate.Domain.Enums;
 using OpenGate.Domain.Interfaces;
 using Theme = OpenGate.Domain.Entities.Theme;
 
@@ -46,6 +47,12 @@ public static class SeedData
 
         var themeRepository = scope.ServiceProvider.GetRequiredService<IThemeRepository>();
         await SeedThemesAsync(themeRepository);
+
+        var taxRateRepository = scope.ServiceProvider.GetRequiredService<ITaxRateRepository>();
+        await SeedTaxRatesAsync(taxRateRepository);
+
+        var extensionConfigRepository = scope.ServiceProvider.GetRequiredService<IExtensionConfigRepository>();
+        await SeedExtensionConfigsAsync(extensionConfigRepository, settingRepository);
     }
 
     private static async Task SeedSettingsAsync(ISettingRepository repository)
@@ -61,9 +68,6 @@ public static class SeedData
             new() { Key = "CompanyName", Value = "My Company", Description = "Company name used on invoices and emails", Group = "General" },
             new() { Key = "CompanyAddress", Value = "", Description = "Company address shown on invoices", Group = "General" },
             new() { Key = "Currency", Value = "USD", Description = "Default currency for prices and invoices", Group = "General" },
-            new() { Key = "TaxRate", Value = "0", Description = "Tax rate percentage applied to invoices (0 = disabled)", Group = "General" },
-            new() { Key = "TaxLabel", Value = "Tax", Description = "Label for the tax line on invoices (e.g. Tax, VAT, GST)", Group = "General" },
-            new() { Key = "TaxInclusive", Value = "false", Description = "Whether product prices already include tax", Group = "General" },
             new() { Key = "LogoUrl", Value = "", Description = "URL to a logo image displayed in the navbar (leave empty for text-only branding)", Group = "General" },
             new() { Key = "FooterText", Value = "", Description = "Custom footer text (leave empty to show site name)", Group = "General" },
             new() { Key = "TermsOfServiceUrl", Value = "", Description = "Link to terms of service page (optional)", Group = "General" },
@@ -165,12 +169,62 @@ public static class SeedData
             }
         }
 
-        string[] deprecated = ["CurrencySymbol", "SmtpFromAddress", "SmtpFromName", "SmtpFrom", "SmtpUser"];
+        string[] deprecated = ["CurrencySymbol", "SmtpFromAddress", "SmtpFromName", "SmtpFrom", "SmtpUser", "TaxRate", "TaxLabel", "TaxInclusive"];
         foreach (var key in deprecated)
         {
             var old = existing.FirstOrDefault(s => s.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
             if (old != null)
                 await repository.DeleteAsync(old.Id);
+        }
+    }
+
+    private static readonly (string Name, string DisplayName, ExtensionType Type, string Prefix)[] KnownExtensions =
+    [
+        ("stripe", "Stripe", ExtensionType.PaymentGateway, "Stripe"),
+        ("paypal", "PayPal", ExtensionType.PaymentGateway, "PayPal"),
+        ("heleket", "Heleket", ExtensionType.PaymentGateway, "Heleket"),
+        ("cryptomus", "Cryptomus", ExtensionType.PaymentGateway, "Cryptomus"),
+        ("nowpayments", "NOWPayments", ExtensionType.PaymentGateway, "NowPayments"),
+        ("btcpayserver", "BTCPay Server", ExtensionType.PaymentGateway, "BtcPayServer"),
+        ("pterodactyl", "Pterodactyl", ExtensionType.ServerProvisioner, "Pterodactyl"),
+        ("proxmox", "Proxmox VE", ExtensionType.ServerProvisioner, "Proxmox"),
+        ("virtfusion", "VirtFusion", ExtensionType.ServerProvisioner, "VirtFusion"),
+    ];
+
+    private static async Task SeedExtensionConfigsAsync(IExtensionConfigRepository extensionRepo, ISettingRepository settingRepo)
+    {
+        var allSettings = (await settingRepo.GetAllAsync()).ToList();
+        var settingsLookup = allSettings.ToDictionary(s => s.Key, s => s.Value, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var ext in KnownExtensions)
+        {
+            var enabledKey = $"{ext.Prefix}Enabled";
+            var isEnabled = settingsLookup.TryGetValue(enabledKey, out var enabledVal)
+                && string.Equals(enabledVal, "true", StringComparison.OrdinalIgnoreCase);
+
+            var settings = allSettings
+                .Where(s => s.Key.StartsWith(ext.Prefix, StringComparison.OrdinalIgnoreCase)
+                    && !s.Key.Equals(enabledKey, StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(s => s.Key[ext.Prefix.Length..], s => s.Value);
+
+            var existing = await extensionRepo.GetByNameAsync(ext.Name);
+            if (existing == null)
+            {
+                await extensionRepo.CreateAsync(new ExtensionConfig
+                {
+                    Name = ext.Name,
+                    DisplayName = ext.DisplayName,
+                    Type = ext.Type,
+                    IsEnabled = isEnabled,
+                    Settings = settings
+                });
+            }
+            else
+            {
+                existing.IsEnabled = isEnabled;
+                existing.Settings = settings;
+                await extensionRepo.UpdateAsync(existing);
+            }
         }
     }
 
@@ -351,6 +405,149 @@ public static class SeedData
         foreach (var theme in presets)
         {
             await repository.CreateAsync(theme);
+        }
+    }
+
+    private static async Task SeedTaxRatesAsync(ITaxRateRepository repository)
+    {
+        var existing = await repository.GetAllAsync();
+        if (existing.Any()) return;
+
+        var rates = new List<TaxRate>
+        {
+            // ── EU VAT ──
+            new() { Country = "AT", CountryName = "Austria", Rate = 20m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "BE", CountryName = "Belgium", Rate = 21m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "BG", CountryName = "Bulgaria", Rate = 20m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "HR", CountryName = "Croatia", Rate = 25m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "CY", CountryName = "Cyprus", Rate = 19m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "CZ", CountryName = "Czechia", Rate = 21m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "DK", CountryName = "Denmark", Rate = 25m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "EE", CountryName = "Estonia", Rate = 22m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "FI", CountryName = "Finland", Rate = 25.5m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "FR", CountryName = "France", Rate = 20m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "DE", CountryName = "Germany", Rate = 19m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "GR", CountryName = "Greece", Rate = 24m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "HU", CountryName = "Hungary", Rate = 27m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "IE", CountryName = "Ireland", Rate = 23m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "IT", CountryName = "Italy", Rate = 22m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "LV", CountryName = "Latvia", Rate = 21m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "LT", CountryName = "Lithuania", Rate = 21m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "LU", CountryName = "Luxembourg", Rate = 17m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "MT", CountryName = "Malta", Rate = 18m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "NL", CountryName = "Netherlands", Rate = 21m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "PL", CountryName = "Poland", Rate = 23m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "PT", CountryName = "Portugal", Rate = 23m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "RO", CountryName = "Romania", Rate = 19m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "SK", CountryName = "Slovakia", Rate = 23m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "SI", CountryName = "Slovenia", Rate = 22m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "ES", CountryName = "Spain", Rate = 21m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "SE", CountryName = "Sweden", Rate = 25m, Label = "VAT", Inclusive = true, Enabled = true },
+
+            // ── Other countries with VAT / GST ──
+            new() { Country = "GB", CountryName = "United Kingdom", Rate = 20m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "NO", CountryName = "Norway", Rate = 25m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "CH", CountryName = "Switzerland", Rate = 8.1m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "IS", CountryName = "Iceland", Rate = 24m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "AU", CountryName = "Australia", Rate = 10m, Label = "GST", Inclusive = true, Enabled = true },
+            new() { Country = "NZ", CountryName = "New Zealand", Rate = 15m, Label = "GST", Inclusive = true, Enabled = true },
+            new() { Country = "CA", CountryName = "Canada", Rate = 5m, Label = "GST", Inclusive = true, Enabled = true },
+            new() { Country = "IN", CountryName = "India", Rate = 18m, Label = "GST", Inclusive = true, Enabled = true },
+            new() { Country = "SG", CountryName = "Singapore", Rate = 9m, Label = "GST", Inclusive = true, Enabled = true },
+            new() { Country = "JP", CountryName = "Japan", Rate = 10m, Label = "Consumption Tax", Inclusive = true, Enabled = true },
+            new() { Country = "KR", CountryName = "South Korea", Rate = 10m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "ZA", CountryName = "South Africa", Rate = 15m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "BR", CountryName = "Brazil", Rate = 17m, Label = "ICMS", Inclusive = true, Enabled = true },
+            new() { Country = "MX", CountryName = "Mexico", Rate = 16m, Label = "IVA", Inclusive = true, Enabled = true },
+            new() { Country = "AR", CountryName = "Argentina", Rate = 21m, Label = "IVA", Inclusive = true, Enabled = true },
+            new() { Country = "CL", CountryName = "Chile", Rate = 19m, Label = "IVA", Inclusive = true, Enabled = true },
+            new() { Country = "CO", CountryName = "Colombia", Rate = 19m, Label = "IVA", Inclusive = true, Enabled = true },
+            new() { Country = "TR", CountryName = "Turkey", Rate = 20m, Label = "KDV", Inclusive = true, Enabled = true },
+            new() { Country = "AE", CountryName = "United Arab Emirates", Rate = 5m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "SA", CountryName = "Saudi Arabia", Rate = 15m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "IL", CountryName = "Israel", Rate = 17m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "TH", CountryName = "Thailand", Rate = 7m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "PH", CountryName = "Philippines", Rate = 12m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "MY", CountryName = "Malaysia", Rate = 8m, Label = "SST", Inclusive = true, Enabled = true },
+            new() { Country = "ID", CountryName = "Indonesia", Rate = 11m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "RU", CountryName = "Russia", Rate = 20m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "UA", CountryName = "Ukraine", Rate = 20m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "EG", CountryName = "Egypt", Rate = 14m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "NG", CountryName = "Nigeria", Rate = 7.5m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "KE", CountryName = "Kenya", Rate = 16m, Label = "VAT", Inclusive = true, Enabled = true },
+            new() { Country = "TW", CountryName = "Taiwan", Rate = 5m, Label = "VAT", Inclusive = true, Enabled = true },
+
+            // ── US – federal (no sales tax) ──
+            new() { Country = "US", CountryName = "United States", Rate = 0m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+
+            // ── US state sales tax ──
+            new() { Country = "US", CountryName = "United States", State = "AL", StateName = "Alabama", Rate = 4m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "AK", StateName = "Alaska", Rate = 0m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "AZ", StateName = "Arizona", Rate = 5.6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "AR", StateName = "Arkansas", Rate = 6.5m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "CA", StateName = "California", Rate = 7.25m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "CO", StateName = "Colorado", Rate = 2.9m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "CT", StateName = "Connecticut", Rate = 6.35m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "DE", StateName = "Delaware", Rate = 0m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "FL", StateName = "Florida", Rate = 6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "GA", StateName = "Georgia", Rate = 4m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "HI", StateName = "Hawaii", Rate = 4m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "ID", StateName = "Idaho", Rate = 6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "IL", StateName = "Illinois", Rate = 6.25m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "IN", StateName = "Indiana", Rate = 7m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "IA", StateName = "Iowa", Rate = 6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "KS", StateName = "Kansas", Rate = 6.5m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "KY", StateName = "Kentucky", Rate = 6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "LA", StateName = "Louisiana", Rate = 4.45m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "ME", StateName = "Maine", Rate = 5.5m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "MD", StateName = "Maryland", Rate = 6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "MA", StateName = "Massachusetts", Rate = 6.25m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "MI", StateName = "Michigan", Rate = 6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "MN", StateName = "Minnesota", Rate = 6.875m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "MS", StateName = "Mississippi", Rate = 7m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "MO", StateName = "Missouri", Rate = 4.225m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "MT", StateName = "Montana", Rate = 0m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "NE", StateName = "Nebraska", Rate = 5.5m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "NV", StateName = "Nevada", Rate = 6.85m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "NH", StateName = "New Hampshire", Rate = 0m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "NJ", StateName = "New Jersey", Rate = 6.625m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "NM", StateName = "New Mexico", Rate = 5.125m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "NY", StateName = "New York", Rate = 4m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "NC", StateName = "North Carolina", Rate = 4.75m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "ND", StateName = "North Dakota", Rate = 5m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "OH", StateName = "Ohio", Rate = 5.75m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "OK", StateName = "Oklahoma", Rate = 4.5m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "OR", StateName = "Oregon", Rate = 0m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "PA", StateName = "Pennsylvania", Rate = 6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "RI", StateName = "Rhode Island", Rate = 7m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "SC", StateName = "South Carolina", Rate = 6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "SD", StateName = "South Dakota", Rate = 4.5m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "TN", StateName = "Tennessee", Rate = 7m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "TX", StateName = "Texas", Rate = 6.25m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "UT", StateName = "Utah", Rate = 6.1m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "VT", StateName = "Vermont", Rate = 6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "VA", StateName = "Virginia", Rate = 5.3m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "WA", StateName = "Washington", Rate = 6.5m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "WV", StateName = "West Virginia", Rate = 6m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "WI", StateName = "Wisconsin", Rate = 5m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+            new() { Country = "US", CountryName = "United States", State = "WY", StateName = "Wyoming", Rate = 4m, Label = "Sales Tax", Inclusive = false, Enabled = true },
+
+            // ── Canadian provinces ──
+            new() { Country = "CA", CountryName = "Canada", State = "AB", StateName = "Alberta", Rate = 5m, Label = "GST", Inclusive = false, Enabled = true },
+            new() { Country = "CA", CountryName = "Canada", State = "BC", StateName = "British Columbia", Rate = 12m, Label = "GST+PST", Inclusive = false, Enabled = true },
+            new() { Country = "CA", CountryName = "Canada", State = "MB", StateName = "Manitoba", Rate = 12m, Label = "GST+PST", Inclusive = false, Enabled = true },
+            new() { Country = "CA", CountryName = "Canada", State = "NB", StateName = "New Brunswick", Rate = 15m, Label = "HST", Inclusive = false, Enabled = true },
+            new() { Country = "CA", CountryName = "Canada", State = "NL", StateName = "Newfoundland", Rate = 15m, Label = "HST", Inclusive = false, Enabled = true },
+            new() { Country = "CA", CountryName = "Canada", State = "NS", StateName = "Nova Scotia", Rate = 15m, Label = "HST", Inclusive = false, Enabled = true },
+            new() { Country = "CA", CountryName = "Canada", State = "ON", StateName = "Ontario", Rate = 13m, Label = "HST", Inclusive = false, Enabled = true },
+            new() { Country = "CA", CountryName = "Canada", State = "PE", StateName = "Prince Edward Island", Rate = 15m, Label = "HST", Inclusive = false, Enabled = true },
+            new() { Country = "CA", CountryName = "Canada", State = "QC", StateName = "Quebec", Rate = 14.975m, Label = "GST+QST", Inclusive = false, Enabled = true },
+            new() { Country = "CA", CountryName = "Canada", State = "SK", StateName = "Saskatchewan", Rate = 11m, Label = "GST+PST", Inclusive = false, Enabled = true },
+        };
+
+        foreach (var rate in rates)
+        {
+            await repository.CreateAsync(rate);
         }
     }
 }

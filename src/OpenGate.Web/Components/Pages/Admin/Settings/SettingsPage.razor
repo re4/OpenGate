@@ -7,6 +7,7 @@
 @inject ICaptchaService CaptchaService
 @inject IWebHostEnvironment Environment
 @inject FileUploadService FileUploadService
+@inject IExtensionConfigRepository ExtensionConfigRepo
 
 <div class="page-header">
     <h1>Settings</h1>
@@ -334,6 +335,9 @@ else
             CurrencyProvider.InvalidateCache();
             CaptchaService.InvalidateCache();
             ((ClamAvService)ClamAvService).InvalidateCache();
+
+            await SyncExtensionConfigAsync(settings);
+
             _successMessage = "Settings saved.";
         }
         catch (Exception ex)
@@ -344,6 +348,63 @@ else
         {
             _saving = false;
         }
+    }
+
+    private async Task SyncExtensionConfigAsync(List<SettingDto> settings)
+    {
+        string? activePrefix = _activeTab switch
+        {
+            "Payment" => _activePaymentTab,
+            "Provisioning" => _activeProvisionerTab,
+            _ => null
+        };
+        if (activePrefix == null) return;
+
+        var extInfo = GetExtensionInfo(activePrefix);
+        if (extInfo == null) return;
+
+        var (name, displayName, type) = extInfo.Value;
+        var enabledKey = $"{activePrefix}Enabled";
+        var isEnabled = _groupValues.TryGetValue(enabledKey, out var enabledVal)
+            && string.Equals(enabledVal, "true", StringComparison.OrdinalIgnoreCase);
+
+        var extSettings = new Dictionary<string, string>();
+        foreach (var setting in settings)
+        {
+            if (setting.Key.StartsWith(activePrefix, StringComparison.OrdinalIgnoreCase)
+                && !setting.Key.Equals(enabledKey, StringComparison.OrdinalIgnoreCase))
+            {
+                extSettings[setting.Key[activePrefix.Length..]] = _groupValues.GetValueOrDefault(setting.Key, setting.Value);
+            }
+        }
+
+        var existing = await ExtensionConfigRepo.GetByNameAsync(name);
+        if (existing == null)
+        {
+            await ExtensionConfigRepo.CreateAsync(new ExtensionConfig
+            {
+                Name = name,
+                DisplayName = displayName,
+                Type = type,
+                IsEnabled = isEnabled,
+                Settings = extSettings
+            });
+        }
+        else
+        {
+            existing.IsEnabled = isEnabled;
+            existing.Settings = extSettings;
+            await ExtensionConfigRepo.UpdateAsync(existing);
+        }
+    }
+
+    private static (string Name, string DisplayName, ExtensionType Type)? GetExtensionInfo(string prefix)
+    {
+        if (PaymentPrefixes.TryGetValue(prefix, out var payInfo))
+            return (prefix.ToLowerInvariant(), payInfo.Label, ExtensionType.PaymentGateway);
+        if (ProvisionerPrefixes.TryGetValue(prefix, out var provInfo))
+            return (prefix.ToLowerInvariant(), provInfo.Label, ExtensionType.ServerProvisioner);
+        return null;
     }
 
     private static string FormatLabel(string key)

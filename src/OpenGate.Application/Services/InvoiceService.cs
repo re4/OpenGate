@@ -7,7 +7,7 @@ using OpenGate.Domain.Interfaces;
 
 namespace OpenGate.Application.Services;
 
-public class InvoiceService(IInvoiceRepository invoiceRepository, IOrderRepository orderRepository, ISettingRepository settingRepository, IMapper mapper) : IInvoiceService
+public class InvoiceService(IInvoiceRepository invoiceRepository, IOrderRepository orderRepository, ISettingRepository settingRepository, ITaxService taxService, IMapper mapper) : IInvoiceService
 {
     public async Task<InvoiceDto?> GetByIdAsync(string id)
     {
@@ -66,12 +66,7 @@ public class InvoiceService(IInvoiceRepository invoiceRepository, IOrderReposito
             throw new InvalidOperationException($"Order with id '{orderId}' not found.");
 
         var currency = (await settingRepository.GetByKeyAsync("Currency"))?.Value ?? "USD";
-        var taxRateStr = (await settingRepository.GetByKeyAsync("TaxRate"))?.Value ?? "0";
-        var taxLabel = (await settingRepository.GetByKeyAsync("TaxLabel"))?.Value ?? "Tax";
-        var taxInclusiveStr = (await settingRepository.GetByKeyAsync("TaxInclusive"))?.Value ?? "false";
-
-        decimal.TryParse(taxRateStr, out var taxRate);
-        var taxInclusive = string.Equals(taxInclusiveStr, "true", StringComparison.OrdinalIgnoreCase);
+        var taxLookup = await taxService.GetTaxForUserAsync(order.UserId);
 
         var invoiceNumber = await invoiceRepository.GenerateInvoiceNumberAsync();
 
@@ -84,28 +79,8 @@ public class InvoiceService(IInvoiceRepository invoiceRepository, IOrderReposito
         }).ToList();
 
         var subtotal = order.Subtotal;
-        decimal tax;
-        decimal total;
-
-        if (taxRate > 0)
-        {
-            if (taxInclusive)
-            {
-                tax = subtotal - (subtotal / (1 + taxRate / 100));
-                tax = Math.Round(tax, 2);
-                total = subtotal;
-            }
-            else
-            {
-                tax = Math.Round(subtotal * taxRate / 100, 2);
-                total = subtotal + tax;
-            }
-        }
-        else
-        {
-            tax = 0;
-            total = subtotal;
-        }
+        var tax = taxLookup.CalculateTax(subtotal);
+        var total = taxLookup.CalculateTotal(subtotal);
 
         var invoice = new Invoice
         {
@@ -118,9 +93,9 @@ public class InvoiceService(IInvoiceRepository invoiceRepository, IOrderReposito
             Tax = tax,
             Total = total,
             Currency = string.IsNullOrWhiteSpace(currency) ? "USD" : currency.Trim(),
-            TaxLabel = string.IsNullOrWhiteSpace(taxLabel) ? "Tax" : taxLabel.Trim(),
-            TaxRate = taxRate,
-            TaxInclusive = taxInclusive,
+            TaxLabel = taxLookup.Label,
+            TaxRate = taxLookup.Rate,
+            TaxInclusive = taxLookup.Inclusive,
             DueDate = DateTime.UtcNow.AddDays(14),
             Notes = $"Invoice for Order #{order.Id}"
         };

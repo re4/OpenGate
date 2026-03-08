@@ -164,7 +164,7 @@ public class PterodactylProvisioner : IServerProvisioner
             return new ProvisionResult
             {
                 Success = false,
-                ErrorMessage = ex.Message
+                ErrorMessage = "An unexpected error occurred. Please try again."
             };
         }
     }
@@ -206,7 +206,7 @@ public class PterodactylProvisioner : IServerProvisioner
             return new ProvisionResult
             {
                 Success = false,
-                ErrorMessage = ex.Message
+                ErrorMessage = "An unexpected error occurred. Please try again."
             };
         }
     }
@@ -248,7 +248,7 @@ public class PterodactylProvisioner : IServerProvisioner
             return new ProvisionResult
             {
                 Success = false,
-                ErrorMessage = ex.Message
+                ErrorMessage = "An unexpected error occurred. Please try again."
             };
         }
     }
@@ -290,7 +290,7 @@ public class PterodactylProvisioner : IServerProvisioner
             return new ProvisionResult
             {
                 Success = false,
-                ErrorMessage = ex.Message
+                ErrorMessage = "An unexpected error occurred. Please try again."
             };
         }
     }
@@ -356,7 +356,7 @@ public class PterodactylProvisioner : IServerProvisioner
             {
                 IsOnline = false,
                 IsSuspended = false,
-                StatusMessage = ex.Message
+                StatusMessage = "An unexpected error occurred. Please try again."
             };
         }
     }
@@ -440,7 +440,7 @@ public class PterodactylProvisioner : IServerProvisioner
         }
         catch (Exception ex)
         {
-            return new ProvisionResult { Success = false, ErrorMessage = ex.Message };
+            return new ProvisionResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 

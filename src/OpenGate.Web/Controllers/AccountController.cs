@@ -103,9 +103,8 @@ public class AccountController(
     }
 
     [HttpGet("logout")]
-    public async Task<IActionResult> LogoutGet()
+    public IActionResult LogoutGet()
     {
-        await signInManager.SignOutAsync();
         return LocalRedirect("/login");
     }
 }

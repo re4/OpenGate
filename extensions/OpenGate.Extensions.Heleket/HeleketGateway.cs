@@ -77,7 +77,7 @@ public class HeleketGateway : IPaymentGateway
         }
         catch (Exception ex)
         {
-            return new PaymentResult { Success = false, ErrorMessage = ex.Message };
+            return new PaymentResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -114,7 +114,7 @@ public class HeleketGateway : IPaymentGateway
         }
         catch (Exception ex)
         {
-            return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = ex.Message };
+            return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -138,16 +138,20 @@ public class HeleketGateway : IPaymentGateway
     {
         try
         {
+            if (string.IsNullOrEmpty(_apiKey))
+                return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
+
             using var doc = JsonDocument.Parse(payload);
             var root = doc.RootElement;
 
             var receivedSign = root.TryGetProperty("sign", out var signProp) ? signProp.GetString() : null;
 
-            if (!string.IsNullOrEmpty(_apiKey) && !string.IsNullOrEmpty(receivedSign))
+            if (string.IsNullOrEmpty(receivedSign))
+                return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
+
             {
-                using var jsonDoc = JsonDocument.Parse(payload);
                 var mutable = new Dictionary<string, JsonElement>();
-                foreach (var prop in jsonDoc.RootElement.EnumerateObject())
+                foreach (var prop in root.EnumerateObject())
                 {
                     if (prop.Name != "sign")
                         mutable[prop.Name] = prop.Value.Clone();

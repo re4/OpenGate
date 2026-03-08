@@ -61,6 +61,11 @@ window.captchaInterop = {
         });
     },
 
+    setToken: function (elementId, token) {
+        var el = document.getElementById(elementId);
+        if (el) el.value = token;
+    },
+
     getFormToken: function (provider) {
         if (provider === 'RecaptchaV2' || provider === 'RecaptchaV3') {
             var el = document.querySelector('[name="g-recaptcha-response"]');

@@ -3,6 +3,7 @@
 @inject CartService CartService
 @inject IOrderService OrderService
 @inject IInvoiceService InvoiceService
+@inject ITaxService TaxService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject CurrencyProvider CurrencyProvider
@@ -62,20 +63,27 @@ else
                             <span>Subtotal</span>
                             <span class="font-mono">@_currency.Format(CartService.Total)</span>
                         </div>
-                        @if (_currency.TaxEnabled)
+                        @if (_tax.Found && _tax.Rate > 0)
                         {
                             <div class="d-flex justify-content-between mb-1 text-muted">
-                                <span>@_currency.TaxDisplay@(_currency.TaxInclusive ? " (incl.)" : "")</span>
-                                <span class="font-mono">@_currency.Format(_currency.CalculateTax(CartService.Total))</span>
+                                <span>@_tax.TaxDisplay@(_tax.Inclusive ? " (incl.)" : "")</span>
+                                <span class="font-mono">@_currency.Format(_tax.CalculateTax(CartService.Total))</span>
                             </div>
                         }
                         <div class="d-flex justify-content-between fw-bold fs-5 pt-1">
                             <span>Total</span>
-                            <span class="font-mono">@_currency.Format(_currency.CalculateTotal(CartService.Total))</span>
+                            <span class="font-mono">@_currency.Format(_tax.CalculateTotal(CartService.Total))</span>
                         </div>
-                        @if (_currency.TaxInclusive && _currency.TaxEnabled)
+                        @if (_tax.Inclusive && _tax.Rate > 0)
                         {
-                            <small class="text-muted d-block mt-1">Prices include @_currency.TaxLabel</small>
+                            <small class="text-muted d-block mt-1">Prices include @_tax.Label</small>
+                        }
+                        @if (!_tax.Found)
+                        {
+                            <small class="text-muted d-block mt-1">
+                                <i class="bi bi-info-circle me-1"></i>Tax will be determined by your billing address.
+                                Update your profile to see applicable tax.
+                            </small>
                         }
                     </div>
                     <div class="card-footer">
@@ -96,12 +104,18 @@ else
 @code {
     private CheckoutModel _model = new();
     private CurrencyInfo _currency = new();
+    private TaxLookupResult _tax = TaxLookupResult.None;
     private string? _errorMessage;
     private bool _isSubmitting;
 
     protected override async Task OnInitializedAsync()
     {
         _currency = await CurrencyProvider.GetAsync();
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrEmpty(userId))
+            _tax = await TaxService.GetTaxForUserAsync(userId);
     }
 
     private async Task PlaceOrder()

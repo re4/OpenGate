@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<ISettingRepository, SettingRepository>();
         services.AddScoped<IThemeRepository, ThemeRepository>();
         services.AddScoped<IExtensionConfigRepository, ExtensionConfigRepository>();
+        services.AddScoped<ITaxRateRepository, TaxRateRepository>();
 
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IProductService, ProductService>();
@@ -36,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<IThemeService, ThemeService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IServerManagementService, ServerManagementService>();
+        services.AddScoped<ITaxService, TaxService>();
 
         services.AddAutoMapper(cfg => { }, typeof(MappingProfile).Assembly);
 

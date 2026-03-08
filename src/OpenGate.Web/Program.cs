@@ -6,6 +6,8 @@ using OpenGate.Extensions.BtcPayServer;
 using OpenGate.Extensions.Cryptomus;
 using OpenGate.Extensions.Heleket;
 using OpenGate.Extensions.NowPayments;
+using OpenGate.Extensions.PayPal;
+using OpenGate.Extensions.Stripe;
 using OpenGate.Extensions.Proxmox;
 using OpenGate.Extensions.Pterodactyl;
 using OpenGate.Extensions.VirtFusion;
@@ -42,6 +44,9 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LogoutPath = "/logout";
     options.AccessDeniedPath = "/access-denied";
     options.Cookie.Name = "OpenGate.Auth";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Lax;
     options.ExpireTimeSpan = TimeSpan.FromDays(7);
     options.SlidingExpiration = true;
 });
@@ -66,6 +71,8 @@ builder.Services.AddScoped<IServerProvisioner, VirtFusionProvisioner>();
 builder.Services.AddScoped<IServerProvisioner, PterodactylProvisioner>();
 builder.Services.AddScoped<IServerProvisioner, ProxmoxProvisioner>();
 
+builder.Services.AddScoped<IPaymentGateway, StripeGateway>();
+builder.Services.AddScoped<IPaymentGateway, PayPalGateway>();
 builder.Services.AddScoped<IPaymentGateway, HeleketGateway>();
 builder.Services.AddScoped<IPaymentGateway, CryptomusGateway>();
 builder.Services.AddScoped<IPaymentGateway, NowPaymentsGateway>();
@@ -80,14 +87,13 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles();
-
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseAntiforgery();
 
 app.MapControllers();
+app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

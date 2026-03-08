@@ -36,9 +36,12 @@ public class ProxmoxProvisioner : IServerProvisioner
         _defaultCores = int.TryParse(settings.GetValueOrDefault("DefaultCores", "1"), out var cores) ? cores : 1;
         _defaultDisk = int.TryParse(settings.GetValueOrDefault("DefaultDisk", "32"), out var disk) ? disk : 32;
 
+        // TODO: Make SSL validation configurable via ProxmoxIgnoreSsl setting
         var handler = new HttpClientHandler
         {
-            ServerCertificateCustomValidationCallback = (_, _, _, _) => true
+            ServerCertificateCustomValidationCallback = (_, _, _, sslPolicyErrors) =>
+                sslPolicyErrors == System.Net.Security.SslPolicyErrors.None ||
+                sslPolicyErrors == System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors
         };
 
         _httpClient = new HttpClient(handler)
@@ -149,7 +152,7 @@ public class ProxmoxProvisioner : IServerProvisioner
         }
         catch (Exception ex)
         {
-            return new ProvisionResult { Success = false, ErrorMessage = ex.Message };
+            return new ProvisionResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -190,7 +193,7 @@ public class ProxmoxProvisioner : IServerProvisioner
         }
         catch (Exception ex)
         {
-            return new ProvisionResult { Success = false, ErrorMessage = ex.Message };
+            return new ProvisionResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -239,7 +242,7 @@ public class ProxmoxProvisioner : IServerProvisioner
         }
         catch (Exception ex)
         {
-            return new ServerStatus { IsOnline = false, StatusMessage = ex.Message };
+            return new ServerStatus { IsOnline = false, StatusMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -338,7 +341,7 @@ public class ProxmoxProvisioner : IServerProvisioner
         }
         catch (Exception ex)
         {
-            return new ProvisionResult { Success = false, ErrorMessage = ex.Message };
+            return new ProvisionResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -364,7 +367,7 @@ public class ProxmoxProvisioner : IServerProvisioner
         }
         catch (Exception ex)
         {
-            return new ProvisionResult { Success = false, ErrorMessage = ex.Message };
+            return new ProvisionResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -446,7 +449,7 @@ public class ProxmoxProvisioner : IServerProvisioner
         }
         catch (Exception ex)
         {
-            return new ProvisionResult { Success = false, ErrorMessage = ex.Message };
+            return new ProvisionResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -496,7 +499,7 @@ public class ProxmoxProvisioner : IServerProvisioner
         }
         catch (Exception ex)
         {
-            return new ProvisionResult { Success = false, ErrorMessage = ex.Message };
+            return new ProvisionResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 

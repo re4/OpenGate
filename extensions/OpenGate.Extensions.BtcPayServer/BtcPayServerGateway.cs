@@ -101,7 +101,7 @@ public class BtcPayServerGateway : IPaymentGateway
         }
         catch (Exception ex)
         {
-            return new PaymentResult { Success = false, ErrorMessage = ex.Message };
+            return new PaymentResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -140,7 +140,7 @@ public class BtcPayServerGateway : IPaymentGateway
         }
         catch (Exception ex)
         {
-            return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = ex.Message };
+            return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -184,7 +184,7 @@ public class BtcPayServerGateway : IPaymentGateway
         }
         catch (Exception ex)
         {
-            return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = ex.Message };
+            return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -198,24 +198,24 @@ public class BtcPayServerGateway : IPaymentGateway
     {
         try
         {
-            if (!string.IsNullOrEmpty(_webhookSecret))
+            if (string.IsNullOrEmpty(_webhookSecret))
+                return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
+
+            var receivedSig = headers.GetValueOrDefault("BTCPay-Sig", "");
+            if (string.IsNullOrEmpty(receivedSig))
+                return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
+
+            var sigValue = receivedSig.StartsWith("sha256=")
+                ? receivedSig["sha256=".Length..]
+                : receivedSig;
+
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_webhookSecret));
+            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
+            var expectedSig = Convert.ToHexStringLower(hash);
+
+            if (!string.Equals(expectedSig, sigValue, StringComparison.OrdinalIgnoreCase))
             {
-                var receivedSig = headers.GetValueOrDefault("BTCPay-Sig", "");
-                if (!string.IsNullOrEmpty(receivedSig))
-                {
-                    var sigValue = receivedSig.StartsWith("sha256=")
-                        ? receivedSig["sha256=".Length..]
-                        : receivedSig;
-
-                    using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_webhookSecret));
-                    var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
-                    var expectedSig = Convert.ToHexStringLower(hash);
-
-                    if (!string.Equals(expectedSig, sigValue, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
-                    }
-                }
+                return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
             }
 
             using var doc = JsonDocument.Parse(payload);

@@ -22,4 +22,5 @@ public class MongoDbContext(IOptions<MongoDbSettings> settings)
     public IMongoCollection<Setting> Settings => GetCollection<Setting>("Settings");
     public IMongoCollection<ExtensionConfig> ExtensionConfigs => GetCollection<ExtensionConfig>("ExtensionConfigs");
     public IMongoCollection<Theme> Themes => GetCollection<Theme>("Themes");
+    public IMongoCollection<TaxRate> TaxRates => GetCollection<TaxRate>("TaxRates");
 }

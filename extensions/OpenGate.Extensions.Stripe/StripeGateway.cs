@@ -58,7 +58,7 @@ public class StripeGateway : IPaymentGateway
             return new PaymentResult
             {
                 Success = false,
-                ErrorMessage = ex.Message,
+                ErrorMessage = "An unexpected error occurred. Please try again.",
                 AmountPaid = 0
             };
         }
@@ -67,7 +67,7 @@ public class StripeGateway : IPaymentGateway
             return new PaymentResult
             {
                 Success = false,
-                ErrorMessage = ex.Message,
+                ErrorMessage = "An unexpected error occurred. Please try again.",
                 AmountPaid = 0
             };
         }
@@ -113,7 +113,7 @@ public class StripeGateway : IPaymentGateway
             {
                 Success = false,
                 TransactionId = transactionId,
-                ErrorMessage = ex.Message,
+                ErrorMessage = "An unexpected error occurred. Please try again.",
                 AmountPaid = 0
             };
         }
@@ -123,7 +123,7 @@ public class StripeGateway : IPaymentGateway
             {
                 Success = false,
                 TransactionId = transactionId,
-                ErrorMessage = ex.Message,
+                ErrorMessage = "An unexpected error occurred. Please try again.",
                 AmountPaid = 0
             };
         }
@@ -175,7 +175,7 @@ public class StripeGateway : IPaymentGateway
             {
                 Success = false,
                 TransactionId = transactionId,
-                ErrorMessage = ex.Message,
+                ErrorMessage = "An unexpected error occurred. Please try again.",
                 AmountPaid = 0
             };
         }
@@ -185,7 +185,7 @@ public class StripeGateway : IPaymentGateway
             {
                 Success = false,
                 TransactionId = transactionId,
-                ErrorMessage = ex.Message,
+                ErrorMessage = "An unexpected error occurred. Please try again.",
                 AmountPaid = 0
             };
         }

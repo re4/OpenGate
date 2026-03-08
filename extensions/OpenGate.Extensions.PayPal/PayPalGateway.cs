@@ -132,7 +132,7 @@ public class PayPalGateway : IPaymentGateway
             return new PaymentResult
             {
                 Success = false,
-                ErrorMessage = ex.Message,
+                ErrorMessage = "An unexpected error occurred. Please try again.",
                 AmountPaid = 0
             };
         }
@@ -220,7 +220,7 @@ public class PayPalGateway : IPaymentGateway
             {
                 Success = false,
                 TransactionId = transactionId,
-                ErrorMessage = ex.Message,
+                ErrorMessage = "An unexpected error occurred. Please try again.",
                 AmountPaid = 0
             };
         }
@@ -311,7 +311,7 @@ public class PayPalGateway : IPaymentGateway
             {
                 Success = false,
                 TransactionId = transactionId,
-                ErrorMessage = ex.Message,
+                ErrorMessage = "An unexpected error occurred. Please try again.",
                 AmountPaid = 0
             };
         }
@@ -453,7 +453,7 @@ public class PayPalGateway : IPaymentGateway
             {
                 Success = false,
                 TransactionId = orderId,
-                ErrorMessage = ex.Message,
+                ErrorMessage = "An unexpected error occurred. Please try again.",
                 AmountPaid = 0
             };
         }

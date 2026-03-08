@@ -7,7 +7,7 @@ using OpenGate.Domain.Interfaces;
 
 namespace OpenGate.Application.Services;
 
-public class OrderService(IOrderRepository orderRepository, IProductRepository productRepository, ISettingRepository settingRepository, IMapper mapper) : IOrderService
+public class OrderService(IOrderRepository orderRepository, IProductRepository productRepository, ISettingRepository settingRepository, ITaxService taxService, IMapper mapper) : IOrderService
 {
     public async Task<OrderDto?> GetByIdAsync(string id)
     {
@@ -48,11 +48,7 @@ public class OrderService(IOrderRepository orderRepository, IProductRepository p
     private async Task<Order> CreateOrderFromItemsAsync(string userId, List<CartItemDto> items, string? notes)
     {
         var currency = (await settingRepository.GetByKeyAsync("Currency"))?.Value ?? "USD";
-        var taxRateStr = (await settingRepository.GetByKeyAsync("TaxRate"))?.Value ?? "0";
-        var taxInclusiveStr = (await settingRepository.GetByKeyAsync("TaxInclusive"))?.Value ?? "false";
-
-        decimal.TryParse(taxRateStr, out var taxRate);
-        var taxInclusive = string.Equals(taxInclusiveStr, "true", StringComparison.OrdinalIgnoreCase);
+        var taxLookup = await taxService.GetTaxForUserAsync(userId);
 
         var orderItems = new List<OrderItem>();
         decimal subtotal = 0;
@@ -78,28 +74,8 @@ public class OrderService(IOrderRepository orderRepository, IProductRepository p
             });
         }
 
-        decimal tax;
-        decimal total;
-
-        if (taxRate > 0)
-        {
-            if (taxInclusive)
-            {
-                tax = subtotal - (subtotal / (1 + taxRate / 100));
-                tax = Math.Round(tax, 2);
-                total = subtotal;
-            }
-            else
-            {
-                tax = Math.Round(subtotal * taxRate / 100, 2);
-                total = subtotal + tax;
-            }
-        }
-        else
-        {
-            tax = 0;
-            total = subtotal;
-        }
+        var tax = taxLookup.CalculateTax(subtotal);
+        var total = taxLookup.CalculateTotal(subtotal);
 
         var order = new Order
         {

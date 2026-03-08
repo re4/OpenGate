@@ -77,7 +77,7 @@
                 try
                 {
                     var token = await JS.InvokeAsync<string>("captchaInterop.executeV3", _captchaConfig.SiteKey);
-                    await JS.InvokeVoidAsync("eval", $"document.getElementById('captcha-token').value = '{token}'");
+                    await JS.InvokeVoidAsync("captchaInterop.setToken", "captcha-token", token);
                 }
                 catch { }
             }
@@ -97,7 +97,7 @@
     [JSInvokable]
     public async Task OnCaptchaCallback(string token)
     {
-        await JS.InvokeVoidAsync("eval", $"document.getElementById('captcha-token').value = '{token}'");
+        await JS.InvokeVoidAsync("captchaInterop.setToken", "captcha-token", token);
     }
 
     private async Task HandleSubmit()
@@ -107,7 +107,7 @@
             try
             {
                 var token = await JS.InvokeAsync<string>("captchaInterop.executeV3", _captchaConfig.SiteKey);
-                await JS.InvokeVoidAsync("eval", $"document.getElementById('captcha-token').value = '{token}'");
+                await JS.InvokeVoidAsync("captchaInterop.setToken", "captcha-token", token);
             }
             catch { }
         }

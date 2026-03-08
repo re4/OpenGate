@@ -22,5 +22,7 @@
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Cryptomus\OpenGate.Extensions.Cryptomus.csproj" />
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.NowPayments\OpenGate.Extensions.NowPayments.csproj" />
     <ProjectReference Include="..\..\extensions\OpenGate.Extensions.BtcPayServer\OpenGate.Extensions.BtcPayServer.csproj" />
+    <ProjectReference Include="..\..\extensions\OpenGate.Extensions.PayPal\OpenGate.Extensions.PayPal.csproj" />
+    <ProjectReference Include="..\..\extensions\OpenGate.Extensions.Stripe\OpenGate.Extensions.Stripe.csproj" />
   </ItemGroup>
 </Project>

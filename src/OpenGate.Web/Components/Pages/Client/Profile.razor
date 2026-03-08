@@ -1,0 +1,264 @@
+@page "/my/profile"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>My Profile - OpenGate</PageTitle>
+
+<div class="page-header">
+    <h1>My Profile</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_successMessage))
+{
+    <div class="alert alert-success alert-dismissible fade show mb-3">
+        @_successMessage
+        <button type="button" class="btn-close" @onclick="() => _successMessage = null"></button>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger alert-dismissible fade show mb-3">
+        @_errorMessage
+        <button type="button" class="btn-close" @onclick="() => _errorMessage = null"></button>
+    </div>
+}
+
+@if (_loaded)
+{
+    <EditForm Model="_model" OnValidSubmit="SaveProfile">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Personal Information</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="firstName" class="form-label">First Name</label>
+                                <InputText id="firstName" @bind-Value="_model.FirstName" class="form-control" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="lastName" class="form-label">Last Name</label>
+                                <InputText id="lastName" @bind-Value="_model.LastName" class="form-control" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input id="email" type="email" class="form-control" value="@_model.Email" disabled />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="company" class="form-label">Company <span class="text-muted fw-normal">(optional)</span></label>
+                                <InputText id="company" @bind-Value="_model.CompanyName" class="form-control" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Billing Address</h5>
+                        <div class="mb-3">
+                            <label for="address" class="form-label">Address</label>
+                            <InputText id="address" @bind-Value="_model.Address" class="form-control" />
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="city" class="form-label">City</label>
+                                <InputText id="city" @bind-Value="_model.City" class="form-control" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="state" class="form-label">State / Region</label>
+                                <InputText id="state" @bind-Value="_model.State" class="form-control" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="country" class="form-label">Country</label>
+                                <InputSelect id="country" @bind-Value="_model.Country" class="form-select">
+                                    <option value="">— Select country —</option>
+                                    @foreach (var c in _countries)
+                                    {
+                                        <option value="@c.Code">@c.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="postalCode" class="form-label">Postal Code</label>
+                                <InputText id="postalCode" @bind-Value="_model.PostalCode" class="form-control" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end mb-4">
+                    <button type="submit" class="btn btn-primary" disabled="@_isSaving">
+                        @if (_isSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        }
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </EditForm>
+}
+
+@code {
+    private ProfileModel _model = new();
+    private bool _loaded;
+    private bool _isSaving;
+    private string? _successMessage;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) return;
+
+        var user = await UserManager.FindByIdAsync(userId);
+        if (user is null) return;
+
+        _model = new ProfileModel
+        {
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email ?? "",
+            CompanyName = user.CompanyName,
+            Address = user.Address,
+            City = user.City,
+            State = user.State,
+            Country = user.Country,
+            PostalCode = user.PostalCode
+        };
+
+        _loaded = true;
+    }
+
+    private async Task SaveProfile()
+    {
+        _isSaving = true;
+        _successMessage = null;
+        _errorMessage = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) { _errorMessage = "Unable to identify user."; return; }
+
+            var user = await UserManager.FindByIdAsync(userId);
+            if (user is null) { _errorMessage = "User not found."; return; }
+
+            user.FirstName = _model.FirstName;
+            user.LastName = _model.LastName;
+            user.CompanyName = _model.CompanyName;
+            user.Address = _model.Address;
+            user.City = _model.City;
+            user.State = _model.State;
+            user.Country = _model.Country;
+            user.PostalCode = _model.PostalCode;
+
+            var result = await UserManager.UpdateAsync(user);
+            if (result.Succeeded)
+            {
+                _successMessage = "Profile updated successfully.";
+            }
+            else
+            {
+                _errorMessage = string.Join(" ", result.Errors.Select(e => e.Description));
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private class ProfileModel
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string? CompanyName { get; set; }
+        public string? Address { get; set; }
+        public string? City { get; set; }
+        public string? State { get; set; }
+        public string? Country { get; set; }
+        public string? PostalCode { get; set; }
+    }
+
+    private static readonly CountryEntry[] _countries =
+    [
+        new("AE", "United Arab Emirates"),
+        new("AR", "Argentina"),
+        new("AT", "Austria"),
+        new("AU", "Australia"),
+        new("BE", "Belgium"),
+        new("BG", "Bulgaria"),
+        new("BR", "Brazil"),
+        new("CA", "Canada"),
+        new("CH", "Switzerland"),
+        new("CL", "Chile"),
+        new("CN", "China"),
+        new("CO", "Colombia"),
+        new("CY", "Cyprus"),
+        new("CZ", "Czechia"),
+        new("DE", "Germany"),
+        new("DK", "Denmark"),
+        new("EE", "Estonia"),
+        new("EG", "Egypt"),
+        new("ES", "Spain"),
+        new("FI", "Finland"),
+        new("FR", "France"),
+        new("GB", "United Kingdom"),
+        new("GR", "Greece"),
+        new("HK", "Hong Kong"),
+        new("HR", "Croatia"),
+        new("HU", "Hungary"),
+        new("ID", "Indonesia"),
+        new("IE", "Ireland"),
+        new("IL", "Israel"),
+        new("IN", "India"),
+        new("IS", "Iceland"),
+        new("IT", "Italy"),
+        new("JP", "Japan"),
+        new("KR", "South Korea"),
+        new("LT", "Lithuania"),
+        new("LU", "Luxembourg"),
+        new("LV", "Latvia"),
+        new("MT", "Malta"),
+        new("MX", "Mexico"),
+        new("MY", "Malaysia"),
+        new("NG", "Nigeria"),
+        new("NL", "Netherlands"),
+        new("NO", "Norway"),
+        new("NZ", "New Zealand"),
+        new("PH", "Philippines"),
+        new("PL", "Poland"),
+        new("PT", "Portugal"),
+        new("RO", "Romania"),
+        new("RU", "Russia"),
+        new("SA", "Saudi Arabia"),
+        new("SE", "Sweden"),
+        new("SG", "Singapore"),
+        new("SI", "Slovenia"),
+        new("SK", "Slovakia"),
+        new("TH", "Thailand"),
+        new("TR", "Türkiye"),
+        new("TW", "Taiwan"),
+        new("UA", "Ukraine"),
+        new("US", "United States"),
+        new("ZA", "South Africa"),
+    ];
+
+    private record CountryEntry(string Code, string Name);
+}

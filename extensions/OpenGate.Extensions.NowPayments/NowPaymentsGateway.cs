@@ -78,7 +78,7 @@ public class NowPaymentsGateway : IPaymentGateway
         }
         catch (Exception ex)
         {
-            return new PaymentResult { Success = false, ErrorMessage = ex.Message };
+            return new PaymentResult { Success = false, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -117,7 +117,7 @@ public class NowPaymentsGateway : IPaymentGateway
         }
         catch (Exception ex)
         {
-            return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = ex.Message };
+            return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = "An unexpected error occurred. Please try again." };
         }
     }
 
@@ -141,25 +141,27 @@ public class NowPaymentsGateway : IPaymentGateway
     {
         try
         {
-            if (!string.IsNullOrEmpty(_ipnSecret))
+            if (string.IsNullOrEmpty(_ipnSecret))
+                return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
+
+            var receivedSig = headers.GetValueOrDefault("x-nowpayments-sig", "");
+            if (string.IsNullOrEmpty(receivedSig))
+                return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
+
             {
-                var receivedSig = headers.GetValueOrDefault("x-nowpayments-sig", "");
-                if (!string.IsNullOrEmpty(receivedSig))
+                using var doc = JsonDocument.Parse(payload);
+                var sorted = new SortedDictionary<string, JsonElement>();
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                    sorted[prop.Name] = prop.Value.Clone();
+
+                var sortedJson = JsonSerializer.Serialize(sorted);
+                using var hmac = new HMACSHA512(Encoding.UTF8.GetBytes(_ipnSecret));
+                var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(sortedJson));
+                var expectedSig = Convert.ToHexStringLower(hash);
+
+                if (!string.Equals(expectedSig, receivedSig, StringComparison.OrdinalIgnoreCase))
                 {
-                    using var doc = JsonDocument.Parse(payload);
-                    var sorted = new SortedDictionary<string, JsonElement>();
-                    foreach (var prop in doc.RootElement.EnumerateObject())
-                        sorted[prop.Name] = prop.Value.Clone();
-
-                    var sortedJson = JsonSerializer.Serialize(sorted);
-                    using var hmac = new HMACSHA512(Encoding.UTF8.GetBytes(_ipnSecret));
-                    var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(sortedJson));
-                    var expectedSig = Convert.ToHexStringLower(hash);
-
-                    if (!string.Equals(expectedSig, receivedSig, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
-                    }
+                    return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
                 }
             }
 

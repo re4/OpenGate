@@ -4,7 +4,7 @@ using OpenGate.Domain.Interfaces;
 
 namespace OpenGate.Web.Services;
 
-public class ClamAvService(IServiceScopeFactory scopeFactory) : IClamAvService
+public class ClamAvService(IServiceScopeFactory scopeFactory, ILogger<ClamAvService> logger) : IClamAvService
 {
     private ClamAvConfig? _config;
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -32,7 +32,7 @@ public class ClamAvService(IServiceScopeFactory scopeFactory) : IClamAvService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"ClamAV scan failed: {ex.Message}");
+            logger.LogWarning(ex, "ClamAV scan failed");
             return ScanResult.Skip();
         }
     }

@@ -1,0 +1,262 @@
+@page "/admin/tax-rates"
+@attribute [Authorize(Roles = "Admin")]
+@inject ITaxRateRepository TaxRateRepo
+@inject NavigationManager Navigation
+
+<PageTitle>Tax Rates - Admin</PageTitle>
+
+<div class="page-header d-flex align-items-center justify-content-between">
+    <div>
+        <h1>Tax Rates</h1>
+        <p class="text-muted mb-0">
+            @if (!_loading)
+            {
+                <span>@_allRates.Count rates total &mdash; </span>
+            }
+            Rates are auto-applied based on customer billing address.
+        </p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+else
+{
+    @if (_successMessage != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @_successMessage
+            <button type="button" class="btn-close" @onclick="() => _successMessage = null"></button>
+        </div>
+    }
+
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <input type="text" class="form-control" placeholder="Filter by country name or code..."
+                   value="@_filter" @oninput="OnFilterChanged" />
+        </div>
+    </div>
+
+    @if (!_filteredGroups.Any())
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="empty-state">
+                    <i class="bi bi-percent d-block"></i>
+                    <p class="mb-0">No tax rates match your filter</p>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        @foreach (var group in _filteredGroups)
+        {
+            <div class="card mb-3">
+                <div class="card-header d-flex align-items-center justify-content-between"
+                     style="background: var(--bg-elevated);">
+                    <strong>@group.Key</strong>
+                    <span class="badge bg-secondary">@group.Count() rates</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Country</th>
+                                <th>State / Region</th>
+                                <th>Rate (%)</th>
+                                <th>Label</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var rate in group)
+                            {
+                                var isEditing = _editingId == rate.Id;
+                                <tr>
+                                    <td>@rate.Country</td>
+                                    <td>@(rate.StateName ?? rate.State ?? "—")</td>
+
+                                    @if (isEditing)
+                                    {
+                                        <td>
+                                            <input type="number" step="0.01" min="0" max="100"
+                                                   class="form-control form-control-sm" style="width: 90px;"
+                                                   @bind="_editRate" />
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control form-control-sm" style="width: 120px;"
+                                                   @bind="_editLabel" />
+                                        </td>
+                                        <td>
+                                            <div class="form-check form-switch">
+                                                <input type="checkbox" class="form-check-input" @bind="_editInclusive" />
+                                                <label class="form-check-label small">@(_editInclusive ? "Inclusive" : "Exclusive")</label>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="form-check form-switch">
+                                                <input type="checkbox" class="form-check-input" @bind="_editEnabled" />
+                                                <label class="form-check-label small">@(_editEnabled ? "Enabled" : "Disabled")</label>
+                                            </div>
+                                        </td>
+                                        <td class="d-flex gap-1">
+                                            <button type="button" class="btn btn-sm btn-primary" @onclick="SaveEdit" disabled="@_saving">
+                                                @if (_saving)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-check-lg"></i>
+                                                }
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </td>
+                                    }
+                                    else
+                                    {
+                                        <td>@rate.Rate%</td>
+                                        <td>@rate.Label</td>
+                                        <td>
+                                            <span class="badge @(rate.Inclusive ? "bg-info" : "bg-secondary")">
+                                                @(rate.Inclusive ? "Inclusive" : "Exclusive")
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge @(rate.Enabled ? "bg-success" : "bg-danger")">
+                                                @(rate.Enabled ? "Enabled" : "Disabled")
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(rate)">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<TaxRate> _allRates = new();
+    private IEnumerable<IGrouping<string, TaxRate>> _filteredGroups = [];
+    private string _filter = "";
+    private bool _loading = true;
+    private bool _saving;
+    private string? _error;
+    private string? _successMessage;
+
+    private string? _editingId;
+    private decimal _editRate;
+    private string _editLabel = "";
+    private bool _editInclusive;
+    private bool _editEnabled;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _allRates = (await TaxRateRepo.GetAllAsync()).OrderBy(r => r.CountryName).ThenBy(r => r.StateName).ToList();
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnFilterChanged(ChangeEventArgs e)
+    {
+        _filter = e.Value?.ToString() ?? "";
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var rates = _allRates.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_filter))
+        {
+            var term = _filter.Trim();
+            rates = rates.Where(r =>
+                r.CountryName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                r.Country.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+
+        _filteredGroups = rates.GroupBy(r => r.CountryName).OrderBy(g => g.Key);
+    }
+
+    private void StartEdit(TaxRate rate)
+    {
+        _editingId = rate.Id;
+        _editRate = rate.Rate;
+        _editLabel = rate.Label;
+        _editInclusive = rate.Inclusive;
+        _editEnabled = rate.Enabled;
+        _successMessage = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (_editingId == null) return;
+
+        _saving = true;
+        _error = null;
+        _successMessage = null;
+
+        try
+        {
+            var rate = _allRates.FirstOrDefault(r => r.Id == _editingId);
+            if (rate == null) return;
+
+            rate.Rate = _editRate;
+            rate.Label = _editLabel;
+            rate.Inclusive = _editInclusive;
+            rate.Enabled = _editEnabled;
+
+            await TaxRateRepo.UpdateAsync(rate);
+
+            _editingId = null;
+            _successMessage = $"Tax rate for {rate.CountryName} updated.";
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

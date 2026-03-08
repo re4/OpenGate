@@ -44,7 +44,7 @@ else
                         <dd class="col-sm-9 font-mono">@_currency.Format(_order.Subtotal)</dd>
                         @if (_order.Tax > 0)
                         {
-                            <dt class="col-sm-3">@_currency.TaxDisplay</dt>
+                            <dt class="col-sm-3">Tax</dt>
                             <dd class="col-sm-9 font-mono">@_currency.Format(_order.Tax)</dd>
                         }
                         <dt class="col-sm-3">Total</dt>

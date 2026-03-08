@@ -4,6 +4,9 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject CurrencyProvider CurrencyProvider
+@inject IExtensionConfigRepository ExtensionConfigRepo
+@inject IEnumerable<IPaymentGateway> PaymentGateways
+@inject ISettingService SettingService
 
 <PageTitle>Pay Invoice - OpenGate</PageTitle>
 
@@ -38,9 +41,44 @@ else
         <div class="card-body">
             <p class="mb-2">Amount due: <strong class="font-mono">@_currency.Format(_invoice.Total)</strong></p>
             <p class="text-muted small mb-4">Due date: @_invoice.DueDate.ToString("MMM d, yyyy")</p>
-            <div class="alert alert-info">
-                Payment gateway integration is not yet configured. Please contact support to complete payment.
-            </div>
+
+            @if (_paymentError != null)
+            {
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    @_paymentError
+                    <button type="button" class="btn-close" @onclick="() => _paymentError = null"></button>
+                </div>
+            }
+
+            @if (!_enabledGateways.Any())
+            {
+                <div class="alert alert-info">
+                    No payment gateways are currently enabled. Please contact support to complete payment.
+                </div>
+            }
+            else
+            {
+                <h6 class="mb-3">Select a payment method</h6>
+                <div class="d-flex flex-wrap gap-3 mb-4">
+                    @foreach (var gw in _enabledGateways)
+                    {
+                        <button class="btn btn-outline-primary d-flex align-items-center gap-2 px-4 py-3"
+                                disabled="@_processingPayment"
+                                @onclick="() => ProcessPaymentAsync(gw)">
+                            @if (_processingGateway == gw.Name)
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                            }
+                            else
+                            {
+                                <i class="bi @GetGatewayIcon(gw.Name)"></i>
+                            }
+                            @gw.DisplayName
+                        </button>
+                    }
+                </div>
+            }
+
             <a href="/my/invoices" class="btn btn-outline-secondary">Back to Invoices</a>
         </div>
     </div>
@@ -53,11 +91,29 @@ else
     private CurrencyInfo _currency = new();
     private bool _loading = true;
     private bool _isOwner;
+    private List<ExtensionConfig> _enabledGateways = new();
+    private bool _processingPayment;
+    private string? _processingGateway;
+    private string? _paymentError;
+
+    private static string GetGatewayIcon(string name) => name switch
+    {
+        "stripe" => "bi-stripe",
+        "paypal" => "bi-paypal",
+        "heleket" => "bi-currency-bitcoin",
+        "cryptomus" => "bi-coin",
+        "nowpayments" => "bi-wallet2",
+        "btcpayserver" => "bi-currency-bitcoin",
+        _ => "bi-credit-card"
+    };
 
     protected override async Task OnInitializedAsync()
     {
         _currency = await CurrencyProvider.GetAsync();
         await LoadInvoiceAsync();
+
+        var configs = await ExtensionConfigRepo.GetByTypeAsync(ExtensionType.PaymentGateway);
+        _enabledGateways = configs.Where(c => c.IsEnabled).ToList();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -92,6 +148,64 @@ else
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task ProcessPaymentAsync(ExtensionConfig config)
+    {
+        _processingPayment = true;
+        _processingGateway = config.Name;
+        _paymentError = null;
+        StateHasChanged();
+
+        try
+        {
+            var gateway = PaymentGateways.FirstOrDefault(g => g.Name == config.Name);
+            if (gateway == null)
+            {
+                _paymentError = $"Payment gateway '{config.DisplayName}' is not available.";
+                return;
+            }
+
+            await gateway.InitializeAsync(config.Settings);
+
+            var siteUrlSetting = await SettingService.GetByKeyAsync("SiteUrl");
+            var siteUrl = siteUrlSetting?.Value ?? Navigation.BaseUri.TrimEnd('/');
+
+            var request = new PaymentRequest
+            {
+                InvoiceId = _invoice!.Id,
+                Amount = _invoice.Total,
+                Currency = _invoice.Currency,
+                Description = $"Invoice {_invoice.InvoiceNumber}",
+                ReturnUrl = $"{siteUrl}/my/invoices/{_invoice.Id}",
+                CancelUrl = $"{siteUrl}/my/invoices/{_invoice.Id}/pay",
+                Metadata = new Dictionary<string, string>
+                {
+                    ["InvoiceId"] = _invoice.Id,
+                    ["InvoiceNumber"] = _invoice.InvoiceNumber
+                }
+            };
+
+            var result = await gateway.CreatePaymentAsync(request);
+            if (result.Success && !string.IsNullOrEmpty(result.PaymentUrl))
+            {
+                Navigation.NavigateTo(result.PaymentUrl, forceLoad: true);
+            }
+            else
+            {
+                _paymentError = result.ErrorMessage ?? "Failed to initiate payment. Please try again.";
+            }
+        }
+        catch (Exception)
+        {
+            _paymentError = "An unexpected error occurred. Please try again.";
+        }
+        finally
+        {
+            _processingPayment = false;
+            _processingGateway = null;
+            StateHasChanged();
         }
     }
 }
