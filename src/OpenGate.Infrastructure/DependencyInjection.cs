@@ -1,10 +1,14 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenGate.Application.Interfaces;
 using OpenGate.Application.Mapping;
+using OpenGate.Application.Migration;
 using OpenGate.Application.Services;
+using OpenGate.Domain.Entities;
 using OpenGate.Domain.Interfaces;
 using OpenGate.Infrastructure.Data;
+using OpenGate.Infrastructure.Identity;
 using OpenGate.Infrastructure.Repositories;
 
 namespace OpenGate.Infrastructure;
@@ -40,6 +44,9 @@ public static class DependencyInjection
         services.AddScoped<ITaxService, TaxService>();
 
         services.AddAutoMapper(cfg => { }, typeof(MappingProfile).Assembly);
+
+        services.AddScoped<IPasswordHasher<ApplicationUser>, BcryptPasswordHasher>();
+        services.AddScoped<IMigrationService, PaymenterMigrationService>();
 
         return services;
     }

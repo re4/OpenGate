@@ -1,0 +1,282 @@
+@page "/admin/migration"
+@attribute [Authorize(Roles = "Admin")]
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@using OpenGate.Application.Migration
+@inject IMigrationService MigrationService
+@implements IDisposable
+
+<div class="page-header">
+    <h1>Paymenter Migration</h1>
+    <p class="text-muted">Import data from a Paymenter MariaDB/MySQL database into OpenGate.</p>
+</div>
+
+@if (_step == WizardStep.Configure)
+{
+    <div class="card">
+        <div class="card-header">
+            <i class="bi bi-database me-2"></i>Database Connection
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label fw-medium">MySQL Connection String</label>
+                <small class="text-muted d-block mb-2">
+                    Example: <code>Server=localhost;Port=3306;Database=paymenter;User=root;Password=secret;</code>
+                </small>
+                <input type="text" class="form-control" @bind="_connectionString"
+                       placeholder="Server=...;Database=paymenter;User=...;Password=...;" />
+            </div>
+
+            @if (_testError != null)
+            {
+                <div class="alert alert-danger"><i class="bi bi-x-circle me-1"></i>@_testError</div>
+            }
+
+            <button class="btn btn-primary" @onclick="TestConnection" disabled="@(_testing || string.IsNullOrWhiteSpace(_connectionString))">
+                @if (_testing)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="bi bi-plug me-1"></i>Test Connection
+            </button>
+        </div>
+    </div>
+}
+else if (_step == WizardStep.Preview)
+{
+    <div class="card mb-3">
+        <div class="card-header">
+            <i class="bi bi-check-circle text-success me-2"></i>Connection Successful
+        </div>
+        <div class="card-body">
+            <p class="mb-3">The following records were found in the Paymenter database:</p>
+            <div class="row g-2">
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="border rounded p-3 text-center">
+                        <div class="fs-4 fw-bold">@_counts!.Users</div>
+                        <small class="text-muted">Users</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="border rounded p-3 text-center">
+                        <div class="fs-4 fw-bold">@_counts!.Categories</div>
+                        <small class="text-muted">Categories</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="border rounded p-3 text-center">
+                        <div class="fs-4 fw-bold">@_counts!.Products</div>
+                        <small class="text-muted">Products</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="border rounded p-3 text-center">
+                        <div class="fs-4 fw-bold">@_counts!.Orders</div>
+                        <small class="text-muted">Orders</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="border rounded p-3 text-center">
+                        <div class="fs-4 fw-bold">@_counts!.Services</div>
+                        <small class="text-muted">Services</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="border rounded p-3 text-center">
+                        <div class="fs-4 fw-bold">@_counts!.Invoices</div>
+                        <small class="text-muted">Invoices</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="border rounded p-3 text-center">
+                        <div class="fs-4 fw-bold">@_counts!.InvoiceTransactions</div>
+                        <small class="text-muted">Payments</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="border rounded p-3 text-center">
+                        <div class="fs-4 fw-bold">@_counts!.Tickets</div>
+                        <small class="text-muted">Tickets</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer d-flex gap-2">
+            <button class="btn btn-outline-secondary" @onclick="() => _step = WizardStep.Configure">
+                <i class="bi bi-arrow-left me-1"></i>Back
+            </button>
+            <button class="btn btn-success" @onclick="StartMigration">
+                <i class="bi bi-play-fill me-1"></i>Start Migration
+            </button>
+        </div>
+    </div>
+}
+else if (_step == WizardStep.Running || _step == WizardStep.Complete)
+{
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2">
+            @if (_progress is { IsComplete: true })
+            {
+                <i class="bi bi-check-circle-fill text-success"></i>
+                <span>Migration Complete</span>
+            }
+            else if (_progress is { Error: not null })
+            {
+                <i class="bi bi-x-circle-fill text-danger"></i>
+                <span>Migration Failed</span>
+            }
+            else
+            {
+                <span class="spinner-border spinner-border-sm"></span>
+                <span>Migrating: @(_progress?.CurrentStep ?? "Starting...")</span>
+            }
+        </div>
+        <div class="card-body">
+            @if (_progress != null)
+            {
+                <div class="progress mb-3" style="height: 24px;">
+                    @{
+                        var pct = _progress.TotalSteps > 0 ? (int)((double)_progress.CompletedSteps / _progress.TotalSteps * 100) : 0;
+                    }
+                    <div class="progress-bar @(_progress.Error != null ? "bg-danger" : _progress.IsComplete ? "bg-success" : "")"
+                         role="progressbar" style="width: @(pct)%">
+                        @pct%
+                    </div>
+                </div>
+
+                @if (_progress.Error != null)
+                {
+                    <div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-1"></i>@_progress.Error</div>
+                }
+
+                @foreach (var s in _progress.Steps)
+                {
+                    <div class="d-flex align-items-start gap-2 mb-2 p-2 rounded" style="background: var(--bg-elevated, #f8f9fa);">
+                        <i class="bi @(s.Success ? "bi-check-circle text-success" : "bi-exclamation-triangle text-warning") mt-1"></i>
+                        <div class="flex-grow-1">
+                            <div class="fw-medium">@s.Name</div>
+                            <small class="text-muted">
+                                @s.Imported imported
+                                @if (s.Skipped > 0) { <text>, @s.Skipped skipped</text> }
+                                @if (s.Failed > 0) { <text>, <span class="text-danger">@s.Failed failed</span></text> }
+                            </small>
+                            @if (s.Warnings.Any())
+                            {
+                                <details class="mt-1">
+                                    <summary class="small text-muted" style="cursor: pointer;">@s.Warnings.Count warning(s)</summary>
+                                    <ul class="small text-muted mb-0 mt-1">
+                                        @foreach (var w in s.Warnings.Take(20))
+                                        {
+                                            <li>@w</li>
+                                        }
+                                        @if (s.Warnings.Count > 20)
+                                        {
+                                            <li>... and @(s.Warnings.Count - 20) more</li>
+                                        }
+                                    </ul>
+                                </details>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+        @if (_progress is { IsComplete: true } or { Error: not null })
+        {
+            <div class="card-footer">
+                <a href="/admin" class="btn btn-primary">
+                    <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+                </a>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private enum WizardStep { Configure, Preview, Running, Complete }
+
+    private WizardStep _step = WizardStep.Configure;
+    private string _connectionString = string.Empty;
+    private bool _testing;
+    private string? _testError;
+    private PaymenterCounts? _counts;
+    private MigrationProgress? _progress;
+    private Timer? _pollTimer;
+
+    private async Task TestConnection()
+    {
+        _testing = true;
+        _testError = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await MigrationService.TestConnectionAsync(_connectionString);
+            if (result.Success)
+            {
+                _counts = result.Counts;
+                _step = WizardStep.Preview;
+            }
+            else
+            {
+                _testError = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _testError = ex.Message;
+        }
+        finally
+        {
+            _testing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task StartMigration()
+    {
+        _step = WizardStep.Running;
+        _progress = new MigrationProgress { IsRunning = true };
+        StateHasChanged();
+
+        _pollTimer = new Timer(_ => InvokeAsync(PollProgress), null, 0, 1000);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await MigrationService.RunMigrationAsync(_connectionString);
+            }
+            catch
+            {
+                // progress will capture the error
+            }
+        });
+    }
+
+    private async Task PollProgress()
+    {
+        try
+        {
+            _progress = MigrationService.GetProgress();
+            await InvokeAsync(StateHasChanged);
+
+            if (_progress is { IsRunning: false })
+            {
+                _step = WizardStep.Complete;
+                _pollTimer?.Dispose();
+                _pollTimer = null;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch
+        {
+            // ignore polling errors
+        }
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+    }
+}
