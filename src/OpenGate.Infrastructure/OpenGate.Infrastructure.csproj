@@ -10,7 +10,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.3" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.3" />
-    <PackageReference Include="MongoDB.Driver" Version="3.6.0" />
+    <PackageReference Include="MongoDB.Driver" Version="3.7.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\OpenGate.Domain\OpenGate.Domain.csproj" />
