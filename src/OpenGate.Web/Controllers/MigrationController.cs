@@ -1,12 +1,18 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using OpenGate.Application.Migration;
 
 namespace OpenGate.Web.Controllers;
 
+/// <summary>
+/// Admin-only endpoints that drive the Paymenter migration workflow.
+/// Rate limited to mitigate accidental misuse and credential probing.
+/// </summary>
 [Route("api/migration")]
 [ApiController]
 [Authorize(Roles = "Admin")]
+[EnableRateLimiting("admin-api")]
 public class MigrationController(IMigrationService migrationService) : ControllerBase
 {
     [HttpPost("test-connection")]

@@ -1,16 +1,45 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using OpenGate.Extensions.Abstractions;
 
 namespace OpenGate.Extensions.BtcPayServer;
 
+/// <summary>
+/// BTCPay Server payment gateway using the Greenfield API. The configured
+/// <c>ServerUrl</c> is validated against an SSRF allowlist so a compromised
+/// admin account cannot redirect the gateway at internal infrastructure
+/// unless <c>AllowPrivateHosts</c> is explicitly enabled.
+/// </summary>
 public class BtcPayServerGateway : IPaymentGateway
 {
-    private HttpClient _httpClient = new();
+    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly Lazy<HttpClient> _fallbackClient = new(() => new HttpClient { Timeout = TimeSpan.FromSeconds(30) });
+    private Uri? _baseAddress;
     private string _apiKey = string.Empty;
     private string _storeId = string.Empty;
     private string _webhookSecret = string.Empty;
+
+    /// <summary>
+    /// Initializes a new <see cref="BtcPayServerGateway"/>. The
+    /// <see cref="IHttpClientFactory"/> is optional so the gateway can be
+    /// instantiated outside the host (e.g. CLI utilities).
+    /// </summary>
+    public BtcPayServerGateway(IServiceProvider? serviceProvider = null)
+    {
+        _httpClientFactory = serviceProvider?.GetService<IHttpClientFactory>();
+    }
+
+    private HttpClient CreateClient()
+    {
+        var client = _httpClientFactory?.CreateClient("OpenGate.Default") ?? _fallbackClient.Value;
+        if (_baseAddress != null)
+        {
+            client.BaseAddress = _baseAddress;
+        }
+        return client;
+    }
 
     public string Name => "btcpayserver";
     public string DisplayName => "BTCPay Server";
@@ -24,8 +53,18 @@ public class BtcPayServerGateway : IPaymentGateway
         _webhookSecret = settings.GetValueOrDefault("WebhookSecret", string.Empty);
 
         var serverUrl = settings.GetValueOrDefault("ServerUrl", string.Empty).TrimEnd('/');
-        if (!string.IsNullOrEmpty(serverUrl))
-            _httpClient = new HttpClient { BaseAddress = new Uri(serverUrl + "/") };
+        var allowPrivate = bool.TryParse(settings.GetValueOrDefault("AllowPrivateHosts", "false"), out var allow) && allow;
+
+        if (!string.IsNullOrEmpty(serverUrl)
+            && HttpSecurity.TryValidateOutboundUrl(serverUrl + "/", allowPrivate, out var uri, out _)
+            && uri != null)
+        {
+            _baseAddress = uri;
+        }
+        else
+        {
+            _baseAddress = null;
+        }
 
         return Task.CompletedTask;
     }
@@ -37,7 +76,8 @@ public class BtcPayServerGateway : IPaymentGateway
             ["ServerUrl"] = "https://btcpay.example.com",
             ["ApiKey"] = "",
             ["StoreId"] = "",
-            ["WebhookSecret"] = ""
+            ["WebhookSecret"] = "",
+            ["AllowPrivateHosts"] = "false"
         };
     }
 
@@ -73,7 +113,12 @@ public class BtcPayServerGateway : IPaymentGateway
             };
             httpRequest.Headers.Add("Authorization", $"token {_apiKey}");
 
-            var response = await _httpClient.SendAsync(httpRequest);
+            if (_baseAddress == null)
+            {
+                return new PaymentResult { Success = false, ErrorMessage = "BTCPay Server URL is not configured or not allowed." };
+            }
+
+            var response = await CreateClient().SendAsync(httpRequest);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -112,7 +157,12 @@ public class BtcPayServerGateway : IPaymentGateway
             var httpRequest = new HttpRequestMessage(HttpMethod.Get, $"api/v1/stores/{_storeId}/invoices/{transactionId}");
             httpRequest.Headers.Add("Authorization", $"token {_apiKey}");
 
-            var response = await _httpClient.SendAsync(httpRequest);
+            if (_baseAddress == null)
+            {
+                return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = "BTCPay Server URL is not configured or not allowed." };
+            }
+
+            var response = await CreateClient().SendAsync(httpRequest);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -162,7 +212,12 @@ public class BtcPayServerGateway : IPaymentGateway
             };
             httpRequest.Headers.Add("Authorization", $"token {_apiKey}");
 
-            var response = await _httpClient.SendAsync(httpRequest);
+            if (_baseAddress == null)
+            {
+                return new PaymentResult { Success = false, TransactionId = transactionId, ErrorMessage = "BTCPay Server URL is not configured or not allowed." };
+            }
+
+            var response = await CreateClient().SendAsync(httpRequest);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -210,10 +265,19 @@ public class BtcPayServerGateway : IPaymentGateway
                 : receivedSig;
 
             using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_webhookSecret));
-            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
-            var expectedSig = Convert.ToHexStringLower(hash);
+            var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
 
-            if (!string.Equals(expectedSig, sigValue, StringComparison.OrdinalIgnoreCase))
+            byte[] received;
+            try
+            {
+                received = Convert.FromHexString(sigValue);
+            }
+            catch (FormatException)
+            {
+                return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
+            }
+
+            if (!CryptographicOperations.FixedTimeEquals(expected, received))
             {
                 return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
             }

@@ -19,6 +19,7 @@ public static class DependencyInjection
     {
         services.Configure<MongoDbSettings>(configuration.GetSection("MongoDB"));
         services.AddSingleton<MongoDbContext>();
+        services.AddSingleton<MongoIndexInitializer>();
 
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();

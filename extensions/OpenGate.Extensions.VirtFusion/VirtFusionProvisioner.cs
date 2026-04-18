@@ -1,18 +1,33 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using OpenGate.Extensions.Abstractions;
 
 namespace OpenGate.Extensions.VirtFusion;
 
+/// <summary>
+/// VirtFusion provisioner. Validates the admin-configured ApiUrl against the
+/// SSRF allowlist and uses <see cref="IHttpClientFactory"/> when available.
+/// </summary>
 public class VirtFusionProvisioner : IServerProvisioner
 {
-    private readonly HttpClient _httpClient = new();
-    private string _apiUrl = string.Empty;
+    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly Lazy<HttpClient> _fallbackClient = new(() => new HttpClient { Timeout = TimeSpan.FromSeconds(60) });
+    private Uri? _apiBaseUri;
     private string _apiToken = string.Empty;
     private string _defaultOperatingSystemId = "1";
     private string _defaultHypervisorGroupId = "1";
     private string _defaultPackageId = "1";
+
+    /// <summary>
+    /// Creates the provisioner, resolving an <see cref="IHttpClientFactory"/>
+    /// if the host registered one.
+    /// </summary>
+    public VirtFusionProvisioner(IServiceProvider? serviceProvider = null)
+    {
+        _httpClientFactory = serviceProvider?.GetService<IHttpClientFactory>();
+    }
 
     public string Name => "virtfusion";
     public string DisplayName => "VirtFusion";
@@ -21,16 +36,23 @@ public class VirtFusionProvisioner : IServerProvisioner
 
     public Task InitializeAsync(Dictionary<string, string> settings)
     {
-        _apiUrl = settings.GetValueOrDefault("ApiUrl", string.Empty).TrimEnd('/');
+        var apiUrl = settings.GetValueOrDefault("ApiUrl", string.Empty).TrimEnd('/');
         _apiToken = settings.GetValueOrDefault("ApiToken", string.Empty);
         _defaultOperatingSystemId = settings.GetValueOrDefault("DefaultOperatingSystemId", "1");
         _defaultHypervisorGroupId = settings.GetValueOrDefault("DefaultHypervisorGroupId", "1");
         _defaultPackageId = settings.GetValueOrDefault("DefaultPackageId", "1");
+        var allowPrivate = bool.TryParse(settings.GetValueOrDefault("AllowPrivateHosts", "false"), out var allow) && allow;
 
-        _httpClient.DefaultRequestHeaders.Clear();
-        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
-        _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        _httpClient.BaseAddress = new Uri(_apiUrl);
+        if (!string.IsNullOrEmpty(apiUrl)
+            && HttpSecurity.TryValidateOutboundUrl(apiUrl + "/", allowPrivate, out var uri, out _)
+            && uri != null)
+        {
+            _apiBaseUri = uri;
+        }
+        else
+        {
+            _apiBaseUri = null;
+        }
 
         return Task.CompletedTask;
     }
@@ -43,9 +65,29 @@ public class VirtFusionProvisioner : IServerProvisioner
             ["ApiToken"] = "",
             ["DefaultOperatingSystemId"] = "1",
             ["DefaultHypervisorGroupId"] = "1",
-            ["DefaultPackageId"] = "1"
+            ["DefaultPackageId"] = "1",
+            ["AllowPrivateHosts"] = "false"
         };
     }
+
+    private HttpClient CreateClient()
+        => _httpClientFactory?.CreateClient("OpenGate.Default") ?? _fallbackClient.Value;
+
+    private HttpRequestMessage CreateRequest(HttpMethod method, string path, HttpContent? content = null)
+    {
+        if (_apiBaseUri == null)
+            throw new InvalidOperationException("VirtFusion ApiUrl is not configured or is not allowed.");
+
+        var request = new HttpRequestMessage(method, new Uri(_apiBaseUri, path.TrimStart('/')));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        if (content != null)
+            request.Content = content;
+        return request;
+    }
+
+    private Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, HttpContent? content = null)
+        => CreateClient().SendAsync(CreateRequest(method, path, content));
 
     public async Task<ProvisionResult> CreateServerAsync(ProvisionRequest request)
     {
@@ -86,7 +128,7 @@ public class VirtFusionProvisioner : IServerProvisioner
             var createJson = JsonSerializer.Serialize(createPayload);
             var createContent = new StringContent(createJson, Encoding.UTF8, "application/json");
 
-            var createResponse = await _httpClient.PostAsync("/servers", createContent);
+            var createResponse = await SendAsync(HttpMethod.Post, "/servers", createContent);
             var createResponseContent = await createResponse.Content.ReadAsStringAsync();
 
             if (!createResponse.IsSuccessStatusCode)
@@ -121,7 +163,7 @@ public class VirtFusionProvisioner : IServerProvisioner
             var buildJson = JsonSerializer.Serialize(buildPayload);
             var buildContent = new StringContent(buildJson, Encoding.UTF8, "application/json");
 
-            var buildResponse = await _httpClient.PostAsync($"/servers/{serverId}/build", buildContent);
+            var buildResponse = await SendAsync(HttpMethod.Post, $"/servers/{serverId}/build", buildContent);
             var buildResponseContent = await buildResponse.Content.ReadAsStringAsync();
 
             if (!buildResponse.IsSuccessStatusCode)
@@ -166,7 +208,7 @@ public class VirtFusionProvisioner : IServerProvisioner
     {
         try
         {
-            var response = await _httpClient.PostAsync($"/servers/{externalId}/suspend", null);
+            var response = await SendAsync(HttpMethod.Post, $"/servers/{externalId}/suspend");
 
             if (!response.IsSuccessStatusCode)
             {
@@ -198,7 +240,7 @@ public class VirtFusionProvisioner : IServerProvisioner
     {
         try
         {
-            var response = await _httpClient.PostAsync($"/servers/{externalId}/unsuspend", null);
+            var response = await SendAsync(HttpMethod.Post, $"/servers/{externalId}/unsuspend");
 
             if (!response.IsSuccessStatusCode)
             {
@@ -231,7 +273,7 @@ public class VirtFusionProvisioner : IServerProvisioner
         try
         {
             var delay = "0";
-            var response = await _httpClient.DeleteAsync($"/servers/{externalId}?delay={delay}");
+            var response = await SendAsync(HttpMethod.Delete, $"/servers/{externalId}?delay={delay}");
 
             if (!response.IsSuccessStatusCode)
             {
@@ -263,7 +305,7 @@ public class VirtFusionProvisioner : IServerProvisioner
     {
         try
         {
-            var response = await _httpClient.GetAsync($"/servers/{externalId}");
+            var response = await SendAsync(HttpMethod.Get, $"/servers/{externalId}");
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -351,7 +393,7 @@ public class VirtFusionProvisioner : IServerProvisioner
             var json = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync($"/servers/{externalId}/build", content);
+            var response = await SendAsync(HttpMethod.Post, $"/servers/{externalId}/build", content);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -375,7 +417,7 @@ public class VirtFusionProvisioner : IServerProvisioner
     {
         try
         {
-            var response = await _httpClient.PostAsync($"/servers/{externalId}/backups", null);
+            var response = await SendAsync(HttpMethod.Post, $"/servers/{externalId}/backups");
 
             if (!response.IsSuccessStatusCode)
             {
@@ -399,7 +441,7 @@ public class VirtFusionProvisioner : IServerProvisioner
     {
         try
         {
-            var response = await _httpClient.GetAsync($"/servers/{externalId}/backups");
+            var response = await SendAsync(HttpMethod.Get, $"/servers/{externalId}/backups");
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -431,7 +473,7 @@ public class VirtFusionProvisioner : IServerProvisioner
     {
         try
         {
-            var response = await _httpClient.PostAsync($"/servers/{externalId}/backups/{backupId}/restore", null);
+            var response = await SendAsync(HttpMethod.Post, $"/servers/{externalId}/backups/{backupId}/restore");
 
             if (!response.IsSuccessStatusCode)
             {
@@ -455,7 +497,7 @@ public class VirtFusionProvisioner : IServerProvisioner
     {
         try
         {
-            var response = await _httpClient.PostAsync($"/servers/{externalId}/{action}", null);
+            var response = await SendAsync(HttpMethod.Post, $"/servers/{externalId}/{action}");
 
             if (!response.IsSuccessStatusCode)
             {

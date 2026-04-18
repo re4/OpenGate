@@ -1,15 +1,38 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using OpenGate.Extensions.Abstractions;
 
 namespace OpenGate.Extensions.NowPayments;
 
+/// <summary>
+/// NOWPayments cryptocurrency gateway. Uses <see cref="IHttpClientFactory"/>
+/// when available so DNS rotation and connection reuse are handled by the host.
+/// </summary>
 public class NowPaymentsGateway : IPaymentGateway
 {
-    private readonly HttpClient _httpClient = new() { BaseAddress = new Uri("https://api.nowpayments.io/v1/") };
+    private static readonly Uri ApiBase = new("https://api.nowpayments.io/v1/");
+    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly Lazy<HttpClient> _fallbackClient = new(() => new HttpClient { BaseAddress = ApiBase, Timeout = TimeSpan.FromSeconds(30) });
     private string _apiKey = string.Empty;
     private string _ipnSecret = string.Empty;
+
+    /// <summary>
+    /// Creates the gateway, resolving an <see cref="IHttpClientFactory"/> if
+    /// the host registered one.
+    /// </summary>
+    public NowPaymentsGateway(IServiceProvider? serviceProvider = null)
+    {
+        _httpClientFactory = serviceProvider?.GetService<IHttpClientFactory>();
+    }
+
+    private HttpClient CreateClient()
+    {
+        var client = _httpClientFactory?.CreateClient("OpenGate.Default") ?? _fallbackClient.Value;
+        client.BaseAddress = ApiBase;
+        return client;
+    }
 
     public string Name => "nowpayments";
     public string DisplayName => "NOWPayments";
@@ -89,7 +112,7 @@ public class NowPaymentsGateway : IPaymentGateway
             var request = new HttpRequestMessage(HttpMethod.Get, $"payment/{transactionId}");
             request.Headers.Add("x-api-key", _apiKey);
 
-            var response = await _httpClient.SendAsync(request);
+            var response = await CreateClient().SendAsync(request);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -156,10 +179,19 @@ public class NowPaymentsGateway : IPaymentGateway
 
                 var sortedJson = JsonSerializer.Serialize(sorted);
                 using var hmac = new HMACSHA512(Encoding.UTF8.GetBytes(_ipnSecret));
-                var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(sortedJson));
-                var expectedSig = Convert.ToHexStringLower(hash);
+                var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(sortedJson));
 
-                if (!string.Equals(expectedSig, receivedSig, StringComparison.OrdinalIgnoreCase))
+                byte[] received;
+                try
+                {
+                    received = Convert.FromHexString(receivedSig);
+                }
+                catch (FormatException)
+                {
+                    return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
+                }
+
+                if (!CryptographicOperations.FixedTimeEquals(expected, received))
                 {
                     return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
                 }
@@ -205,6 +237,6 @@ public class NowPaymentsGateway : IPaymentGateway
         };
         request.Headers.Add("x-api-key", _apiKey);
 
-        return await _httpClient.SendAsync(request);
+        return await CreateClient().SendAsync(request);
     }
 }

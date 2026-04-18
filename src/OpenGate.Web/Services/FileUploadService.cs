@@ -7,14 +7,14 @@ public class FileUploadService(IWebHostEnvironment env, IClamAvService clamAv, I
 {
     private static readonly HashSet<string> AllowedTicketExtensions =
     [
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg",
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
         ".mp4", ".webm", ".mov", ".avi",
         ".txt", ".log"
     ];
 
     private static readonly HashSet<string> AllowedImageExtensions =
     [
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".ico"
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico"
     ];
 
     private const long MaxImageFileSize = 2 * 1024 * 1024; // 2 MB (logos only)

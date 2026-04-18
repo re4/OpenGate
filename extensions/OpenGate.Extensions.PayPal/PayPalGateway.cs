@@ -1,17 +1,39 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using OpenGate.Extensions.Abstractions;
 
 namespace OpenGate.Extensions.PayPal;
 
+/// <summary>
+/// PayPal REST API v2 payment gateway. Uses Checkout Orders for payments and
+/// the official Notifications API for webhook signature verification. The
+/// gateway propagates the merchant invoice id via the purchase unit
+/// <c>custom_id</c> field so it surfaces directly on capture events.
+/// </summary>
 public class PayPalGateway : IPaymentGateway
 {
-    private readonly HttpClient _httpClient = new();
+    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly Lazy<HttpClient> _fallbackClient = new(() => new HttpClient { Timeout = TimeSpan.FromSeconds(30) });
     private string _clientId = string.Empty;
     private string _clientSecret = string.Empty;
+    private string _webhookId = string.Empty;
     private bool _sandbox = true;
-    private string _baseUrl => _sandbox
+
+    /// <summary>
+    /// Initializes a new <see cref="PayPalGateway"/>. The
+    /// <see cref="IHttpClientFactory"/> is optional so the gateway can still
+    /// be instantiated outside the host (e.g. background utilities).
+    /// </summary>
+    public PayPalGateway(IServiceProvider? serviceProvider = null)
+    {
+        _httpClientFactory = serviceProvider?.GetService<IHttpClientFactory>();
+    }
+
+    private HttpClient HttpClient => _httpClientFactory?.CreateClient("OpenGate.Default") ?? _fallbackClient.Value;
+
+    private string BaseUrl => _sandbox
         ? "https://api-m.sandbox.paypal.com"
         : "https://api-m.paypal.com";
 
@@ -24,6 +46,7 @@ public class PayPalGateway : IPaymentGateway
     {
         _clientId = settings.GetValueOrDefault("ClientId", string.Empty);
         _clientSecret = settings.GetValueOrDefault("ClientSecret", string.Empty);
+        _webhookId = settings.GetValueOrDefault("WebhookId", string.Empty);
         _sandbox = settings.GetValueOrDefault("Sandbox", "true")
             .Equals("true", StringComparison.OrdinalIgnoreCase);
         return Task.CompletedTask;
@@ -35,6 +58,7 @@ public class PayPalGateway : IPaymentGateway
         {
             ["ClientId"] = "",
             ["ClientSecret"] = "",
+            ["WebhookId"] = "",
             ["Sandbox"] = "true"
         };
     }
@@ -62,13 +86,15 @@ public class PayPalGateway : IPaymentGateway
                     new
                     {
                         reference_id = request.InvoiceId,
+                        custom_id = request.InvoiceId,
+                        invoice_id = request.InvoiceId,
                         description = string.IsNullOrEmpty(request.Description)
                             ? $"Invoice {request.InvoiceId}"
                             : request.Description,
                         amount = new
                         {
                             currency_code = request.Currency,
-                            value = request.Amount.ToString("F2")
+                            value = request.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
                         }
                     }
                 },
@@ -80,14 +106,14 @@ public class PayPalGateway : IPaymentGateway
                 }
             };
 
-            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v2/checkout/orders");
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/v2/checkout/orders");
             requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             requestMessage.Content = new StringContent(
                 JsonSerializer.Serialize(orderPayload),
                 Encoding.UTF8,
                 "application/json");
 
-            var response = await _httpClient.SendAsync(requestMessage);
+            var response = await HttpClient.SendAsync(requestMessage);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -103,15 +129,17 @@ public class PayPalGateway : IPaymentGateway
             using var doc = JsonDocument.Parse(content);
             var root = doc.RootElement;
             var orderId = root.GetProperty("id").GetString() ?? string.Empty;
-            var links = root.GetProperty("links");
             string? approvalUrl = null;
 
-            foreach (var link in links.EnumerateArray())
+            if (root.TryGetProperty("links", out var links))
             {
-                if (link.GetProperty("rel").GetString() == "approve")
+                foreach (var link in links.EnumerateArray())
                 {
-                    approvalUrl = link.GetProperty("href").GetString();
-                    break;
+                    if (link.TryGetProperty("rel", out var relProp) && relProp.GetString() == "approve")
+                    {
+                        approvalUrl = link.TryGetProperty("href", out var hrefProp) ? hrefProp.GetString() : null;
+                        break;
+                    }
                 }
             }
 
@@ -127,7 +155,7 @@ public class PayPalGateway : IPaymentGateway
                 }
             };
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return new PaymentResult
             {
@@ -154,10 +182,10 @@ public class PayPalGateway : IPaymentGateway
                 };
             }
 
-            using var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/v2/checkout/orders/{transactionId}");
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/v2/checkout/orders/{transactionId}");
             requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-            var response = await _httpClient.SendAsync(requestMessage);
+            var response = await HttpClient.SendAsync(requestMessage);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -199,7 +227,7 @@ public class PayPalGateway : IPaymentGateway
                 if (firstUnit.TryGetProperty("amount", out var amountObj) &&
                     amountObj.TryGetProperty("value", out var valueProp))
                 {
-                    amountPaid = decimal.Parse(valueProp.GetString() ?? "0");
+                    decimal.TryParse(valueProp.GetString() ?? "0", System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out amountPaid);
                 }
             }
 
@@ -214,7 +242,7 @@ public class PayPalGateway : IPaymentGateway
                 }
             };
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return new PaymentResult
             {
@@ -263,19 +291,19 @@ public class PayPalGateway : IPaymentGateway
             {
                 amount = new
                 {
-                    value = amount.ToString("F2"),
+                    value = amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
                     currency_code = "USD"
                 }
             };
 
-            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v2/payments/captures/{captureId}/refund");
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/v2/payments/captures/{captureId}/refund");
             requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             requestMessage.Content = new StringContent(
                 JsonSerializer.Serialize(refundPayload),
                 Encoding.UTF8,
                 "application/json");
 
-            var response = await _httpClient.SendAsync(requestMessage);
+            var response = await HttpClient.SendAsync(requestMessage);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -305,7 +333,7 @@ public class PayPalGateway : IPaymentGateway
                 }
             };
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return new PaymentResult
             {
@@ -323,10 +351,28 @@ public class PayPalGateway : IPaymentGateway
         return result.PaymentUrl ?? string.Empty;
     }
 
+    /// <summary>
+    /// Verifies the inbound webhook against PayPal's
+    /// <c>/v1/notifications/verify-webhook-signature</c> endpoint and only
+    /// then projects the event onto a <see cref="WebhookResult"/>. The
+    /// merchant invoice id is read from the capture resource's
+    /// <c>custom_id</c> (set when the order was created).
+    /// </summary>
     public async Task<WebhookResult> HandleWebhookAsync(string payload, Dictionary<string, string> headers)
     {
         try
         {
+            if (string.IsNullOrEmpty(_webhookId) || string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(_clientSecret))
+            {
+                return new WebhookResult { Success = false, EventType = WebhookEventType.Other };
+            }
+
+            var verified = await VerifyWebhookSignatureAsync(payload, headers);
+            if (!verified)
+            {
+                return new WebhookResult { Success = false, EventType = WebhookEventType.Other };
+            }
+
             using var doc = JsonDocument.Parse(payload);
             var root = doc.RootElement;
 
@@ -334,13 +380,17 @@ public class PayPalGateway : IPaymentGateway
                 ? eventTypeProp.GetString() ?? string.Empty
                 : string.Empty;
 
-            if (eventType != "PAYMENT.CAPTURE.COMPLETED" && eventType != "PAYMENT.CAPTURE.DENIED")
+            var mappedEvent = eventType switch
             {
-                return new WebhookResult
-                {
-                    Success = true,
-                    EventType = WebhookEventType.Other
-                };
+                "PAYMENT.CAPTURE.COMPLETED" => WebhookEventType.PaymentCompleted,
+                "PAYMENT.CAPTURE.DENIED" or "PAYMENT.CAPTURE.DECLINED" => WebhookEventType.PaymentFailed,
+                "PAYMENT.CAPTURE.REFUNDED" or "PAYMENT.CAPTURE.REVERSED" => WebhookEventType.PaymentRefunded,
+                _ => WebhookEventType.Other
+            };
+
+            if (mappedEvent == WebhookEventType.Other)
+            {
+                return new WebhookResult { Success = true, EventType = WebhookEventType.Other };
             }
 
             string? captureId = null;
@@ -353,25 +403,21 @@ public class PayPalGateway : IPaymentGateway
                     captureId = idProp.GetString();
                 if (resource.TryGetProperty("amount", out var amountObj) &&
                     amountObj.TryGetProperty("value", out var valueProp))
-                    amount = decimal.Parse(valueProp.GetString() ?? "0");
-                if (resource.TryGetProperty("supplementary_data", out var suppData) &&
-                    suppData.TryGetProperty("related_ids", out var relatedIds) &&
-                    relatedIds.TryGetProperty("order_id", out var orderIdProp))
                 {
-                    invoiceId = orderIdProp.GetString();
+                    decimal.TryParse(valueProp.GetString() ?? "0", System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out amount);
                 }
+                if (resource.TryGetProperty("custom_id", out var customProp))
+                    invoiceId = customProp.GetString();
+                else if (resource.TryGetProperty("invoice_id", out var invoiceProp))
+                    invoiceId = invoiceProp.GetString();
             }
-
-            var eventTypeResult = eventType == "PAYMENT.CAPTURE.COMPLETED"
-                ? WebhookEventType.PaymentCompleted
-                : WebhookEventType.PaymentFailed;
 
             return new WebhookResult
             {
                 Success = true,
                 TransactionId = captureId,
                 InvoiceId = invoiceId,
-                EventType = eventTypeResult,
+                EventType = mappedEvent,
                 Amount = amount
             };
         }
@@ -385,15 +431,61 @@ public class PayPalGateway : IPaymentGateway
         }
     }
 
+    private async Task<bool> VerifyWebhookSignatureAsync(string payload, Dictionary<string, string> headers)
+    {
+        var headerLookup = new Dictionary<string, string>(headers, StringComparer.OrdinalIgnoreCase);
+
+        if (!headerLookup.TryGetValue("PAYPAL-AUTH-ALGO", out var authAlgo)
+            || !headerLookup.TryGetValue("PAYPAL-CERT-URL", out var certUrl)
+            || !headerLookup.TryGetValue("PAYPAL-TRANSMISSION-ID", out var transmissionId)
+            || !headerLookup.TryGetValue("PAYPAL-TRANSMISSION-SIG", out var transmissionSig)
+            || !headerLookup.TryGetValue("PAYPAL-TRANSMISSION-TIME", out var transmissionTime))
+        {
+            return false;
+        }
+
+        var accessToken = await GetAccessTokenAsync();
+        if (string.IsNullOrEmpty(accessToken))
+            return false;
+
+        using var verificationDoc = JsonDocument.Parse(payload);
+
+        var verificationPayload = new Dictionary<string, object>
+        {
+            ["auth_algo"] = authAlgo,
+            ["cert_url"] = certUrl,
+            ["transmission_id"] = transmissionId,
+            ["transmission_sig"] = transmissionSig,
+            ["transmission_time"] = transmissionTime,
+            ["webhook_id"] = _webhookId,
+            ["webhook_event"] = JsonSerializer.Deserialize<JsonElement>(payload)
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/v1/notifications/verify-webhook-signature");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Content = new StringContent(JsonSerializer.Serialize(verificationPayload), Encoding.UTF8, "application/json");
+
+        var response = await HttpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+            return false;
+
+        var content = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(content);
+        if (!doc.RootElement.TryGetProperty("verification_status", out var statusProp))
+            return false;
+
+        return string.Equals(statusProp.GetString(), "SUCCESS", StringComparison.Ordinal);
+    }
+
     private async Task<PaymentResult> CaptureOrderAsync(string accessToken, string orderId)
     {
         try
         {
-            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v2/checkout/orders/{orderId}/capture");
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/v2/checkout/orders/{orderId}/capture");
             requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             requestMessage.Content = new StringContent("{}", Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.SendAsync(requestMessage);
+            var response = await HttpClient.SendAsync(requestMessage);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -434,7 +526,7 @@ public class PayPalGateway : IPaymentGateway
                     if (firstCapture.TryGetProperty("amount", out var amountObj) &&
                         amountObj.TryGetProperty("value", out var valueProp))
                     {
-                        amountPaid = decimal.Parse(valueProp.GetString() ?? "0");
+                        decimal.TryParse(valueProp.GetString() ?? "0", System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out amountPaid);
                     }
                 }
             }
@@ -447,7 +539,7 @@ public class PayPalGateway : IPaymentGateway
                 Metadata = new Dictionary<string, string> { ["Status"] = status }
             };
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return new PaymentResult
             {
@@ -464,11 +556,11 @@ public class PayPalGateway : IPaymentGateway
         try
         {
             var auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_clientSecret}"));
-            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/oauth2/token");
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/v1/oauth2/token");
             requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", auth);
             requestMessage.Content = new StringContent("grant_type=client_credentials", Encoding.UTF8, "application/x-www-form-urlencoded");
 
-            var response = await _httpClient.SendAsync(requestMessage);
+            var response = await HttpClient.SendAsync(requestMessage);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -488,10 +580,10 @@ public class PayPalGateway : IPaymentGateway
     {
         try
         {
-            using var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/v2/checkout/orders/{orderId}");
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/v2/checkout/orders/{orderId}");
             requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-            var response = await _httpClient.SendAsync(requestMessage);
+            var response = await HttpClient.SendAsync(requestMessage);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)

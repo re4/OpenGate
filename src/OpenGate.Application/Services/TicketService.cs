@@ -74,18 +74,23 @@ public class TicketService(ITicketRepository repository, IMapper mapper) : ITick
         var ticket = await repository.GetByIdAsync(ticketId);
         if (ticket == null) return null;
 
+        var safeAttachments = dto.Attachments
+            .Where(a => IsSafeAttachmentUrl(a.Url))
+            .Select(a => new TicketAttachment
+            {
+                FileName = a.FileName,
+                Url = a.Url,
+                Size = a.Size
+            })
+            .ToList();
+
         var message = new TicketMessage
         {
             SenderId = dto.SenderId,
             SenderName = dto.SenderName,
             IsStaff = dto.IsStaff,
             Body = dto.Body,
-            Attachments = dto.Attachments.Select(a => new TicketAttachment
-            {
-                FileName = a.FileName,
-                Url = a.Url,
-                Size = a.Size
-            }).ToList(),
+            Attachments = safeAttachments,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -95,6 +100,22 @@ public class TicketService(ITicketRepository repository, IMapper mapper) : ITick
         await repository.UpdateAsync(ticket);
 
         return mapper.Map<TicketMessageDto>(message);
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="url"/> is a safe attachment reference.
+    /// Only same-origin relative paths beginning with <c>/uploads/</c> are
+    /// permitted; absolute URLs and traversal sequences are rejected so that
+    /// callers cannot persist hostile URLs (e.g. <c>javascript:</c>, external
+    /// trackers, or paths escaping the upload root).
+    /// </summary>
+    private static bool IsSafeAttachmentUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        if (url.Contains("..", StringComparison.Ordinal)) return false;
+        if (url.Contains('\\', StringComparison.Ordinal)) return false;
+        if (Uri.TryCreate(url, UriKind.Absolute, out _)) return false;
+        return url.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<TicketDto?> CloseTicketAsync(string id)

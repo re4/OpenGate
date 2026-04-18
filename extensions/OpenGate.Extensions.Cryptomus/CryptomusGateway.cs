@@ -1,15 +1,38 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using OpenGate.Extensions.Abstractions;
 
 namespace OpenGate.Extensions.Cryptomus;
 
+/// <summary>
+/// Cryptomus cryptocurrency gateway. Uses <see cref="IHttpClientFactory"/>
+/// when available so the host controls socket lifetimes and DNS rotation.
+/// </summary>
 public class CryptomusGateway : IPaymentGateway
 {
-    private readonly HttpClient _httpClient = new() { BaseAddress = new Uri("https://api.cryptomus.com/v1/") };
+    private static readonly Uri ApiBase = new("https://api.cryptomus.com/v1/");
+    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly Lazy<HttpClient> _fallbackClient = new(() => new HttpClient { BaseAddress = ApiBase, Timeout = TimeSpan.FromSeconds(30) });
     private string _merchantId = string.Empty;
     private string _apiKey = string.Empty;
+
+    /// <summary>
+    /// Creates the gateway, resolving an <see cref="IHttpClientFactory"/> if
+    /// the host registered one.
+    /// </summary>
+    public CryptomusGateway(IServiceProvider? serviceProvider = null)
+    {
+        _httpClientFactory = serviceProvider?.GetService<IHttpClientFactory>();
+    }
+
+    private HttpClient CreateClient()
+    {
+        var client = _httpClientFactory?.CreateClient("OpenGate.Default") ?? _fallbackClient.Value;
+        client.BaseAddress = ApiBase;
+        return client;
+    }
 
     public string Name => "cryptomus";
     public string DisplayName => "Cryptomus";
@@ -163,7 +186,7 @@ public class CryptomusGateway : IPaymentGateway
                 var bodyWithoutSign = JsonSerializer.Serialize(mutable);
                 var expectedSign = ComputeSign(bodyWithoutSign);
 
-                if (!string.Equals(expectedSign, receivedSign, StringComparison.OrdinalIgnoreCase))
+                if (!FixedTimeHexEquals(expectedSign, receivedSign))
                 {
                     return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
                 }
@@ -210,14 +233,43 @@ public class CryptomusGateway : IPaymentGateway
         request.Headers.Add("merchant", _merchantId);
         request.Headers.Add("sign", sign);
 
-        return await _httpClient.SendAsync(request);
+        return await CreateClient().SendAsync(request);
     }
 
+    /// <summary>
+    /// Computes the Cryptomus request signature. The provider mandates an MD5
+    /// hash over <c>base64(body) + apiKey</c>. MD5 is weak in general but is
+    /// required by the vendor protocol; it is not used for our own integrity
+    /// or authentication outside of this contract.
+    /// </summary>
     private string ComputeSign(string jsonBody)
     {
         var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(jsonBody));
         var input = base64 + _apiKey;
         var hashBytes = MD5.HashData(Encoding.UTF8.GetBytes(input));
         return Convert.ToHexStringLower(hashBytes);
+    }
+
+    /// <summary>
+    /// Performs a constant-time comparison of two hex strings to mitigate
+    /// timing side channels when validating provider signatures.
+    /// </summary>
+    private static bool FixedTimeHexEquals(string expectedHex, string receivedHex)
+    {
+        if (expectedHex.Length != receivedHex.Length) return false;
+
+        byte[] a;
+        byte[] b;
+        try
+        {
+            a = Convert.FromHexString(expectedHex);
+            b = Convert.FromHexString(receivedHex);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        return CryptographicOperations.FixedTimeEquals(a, b);
     }
 }

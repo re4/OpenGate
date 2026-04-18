@@ -248,15 +248,30 @@ public class StripeGateway : IPaymentGateway
         }
     }
 
+    /// <summary>
+    /// Builds a Stripe Checkout session for the supplied payment request and
+    /// propagates the merchant invoice id into both the session metadata and
+    /// the PaymentIntent metadata so that downstream events (refunds, etc.)
+    /// can resolve the originating invoice without ambiguity.
+    /// </summary>
     private static SessionCreateOptions CreateSessionOptions(PaymentRequest request)
     {
+        var metadata = new Dictionary<string, string>(request.Metadata ?? new Dictionary<string, string>())
+        {
+            ["InvoiceId"] = request.InvoiceId
+        };
+
         return new SessionCreateOptions
         {
             Mode = "payment",
             SuccessUrl = request.ReturnUrl + "?session_id={CHECKOUT_SESSION_ID}",
             CancelUrl = request.CancelUrl,
             ClientReferenceId = request.InvoiceId,
-            Metadata = request.Metadata,
+            Metadata = metadata,
+            PaymentIntentData = new SessionPaymentIntentDataOptions
+            {
+                Metadata = metadata
+            },
             LineItems = new List<SessionLineItemOptions>
             {
                 new()
@@ -323,10 +338,16 @@ public class StripeGateway : IPaymentGateway
         };
     }
 
+    /// <summary>
+    /// Handles a Stripe charge.refunded webhook by extracting the original
+    /// merchant invoice id from charge / payment intent metadata so the
+    /// caller can mark the right invoice as refunded. The original invoice
+    /// id is the <c>ClientReferenceId</c> we set when creating the Checkout
+    /// session, propagated through metadata or the linked PaymentIntent.
+    /// </summary>
     private static WebhookResult HandleChargeRefunded(Event stripeEvent)
     {
-        var charge = stripeEvent.Data.Object as Charge;
-        if (charge == null)
+        if (stripeEvent.Data.Object is not Charge charge)
         {
             return new WebhookResult
             {
@@ -335,10 +356,21 @@ public class StripeGateway : IPaymentGateway
             };
         }
 
+        string? invoiceId = null;
+        if (charge.Metadata != null && charge.Metadata.TryGetValue("InvoiceId", out var fromCharge) && !string.IsNullOrEmpty(fromCharge))
+        {
+            invoiceId = fromCharge;
+        }
+        else if (charge.PaymentIntent?.Metadata != null && charge.PaymentIntent.Metadata.TryGetValue("InvoiceId", out var fromIntent) && !string.IsNullOrEmpty(fromIntent))
+        {
+            invoiceId = fromIntent;
+        }
+
         return new WebhookResult
         {
             Success = true,
             TransactionId = charge.PaymentIntentId ?? charge.Id,
+            InvoiceId = invoiceId,
             EventType = WebhookEventType.PaymentRefunded,
             Amount = charge.AmountRefunded / 100m
         };

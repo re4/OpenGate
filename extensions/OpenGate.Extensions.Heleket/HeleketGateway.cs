@@ -1,15 +1,38 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using OpenGate.Extensions.Abstractions;
 
 namespace OpenGate.Extensions.Heleket;
 
+/// <summary>
+/// Heleket cryptocurrency gateway. Uses <see cref="IHttpClientFactory"/> when
+/// available so the host controls socket lifetimes and DNS rotation.
+/// </summary>
 public class HeleketGateway : IPaymentGateway
 {
-    private readonly HttpClient _httpClient = new() { BaseAddress = new Uri("https://api.heleket.com/v1/") };
+    private static readonly Uri ApiBase = new("https://api.heleket.com/v1/");
+    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly Lazy<HttpClient> _fallbackClient = new(() => new HttpClient { BaseAddress = ApiBase, Timeout = TimeSpan.FromSeconds(30) });
     private string _merchantId = string.Empty;
     private string _apiKey = string.Empty;
+
+    /// <summary>
+    /// Creates the gateway, resolving an <see cref="IHttpClientFactory"/> if
+    /// the host registered one.
+    /// </summary>
+    public HeleketGateway(IServiceProvider? serviceProvider = null)
+    {
+        _httpClientFactory = serviceProvider?.GetService<IHttpClientFactory>();
+    }
+
+    private HttpClient CreateClient()
+    {
+        var client = _httpClientFactory?.CreateClient("OpenGate.Default") ?? _fallbackClient.Value;
+        client.BaseAddress = ApiBase;
+        return client;
+    }
 
     public string Name => "heleket";
     public string DisplayName => "Heleket";
@@ -160,7 +183,7 @@ public class HeleketGateway : IPaymentGateway
                 var bodyWithoutSign = JsonSerializer.Serialize(mutable);
                 var expectedSign = ComputeSign(bodyWithoutSign);
 
-                if (!string.Equals(expectedSign, receivedSign, StringComparison.OrdinalIgnoreCase))
+                if (!FixedTimeHexEquals(expectedSign, receivedSign))
                 {
                     return Task.FromResult(new WebhookResult { Success = false, EventType = WebhookEventType.Other });
                 }
@@ -207,14 +230,42 @@ public class HeleketGateway : IPaymentGateway
         request.Headers.Add("merchant", _merchantId);
         request.Headers.Add("sign", sign);
 
-        return await _httpClient.SendAsync(request);
+        return await CreateClient().SendAsync(request);
     }
 
+    /// <summary>
+    /// Computes the Heleket request signature. The provider mandates an MD5
+    /// hash over <c>base64(body) + apiKey</c>; this is a vendor protocol
+    /// requirement, not an OpenGate cryptographic primitive.
+    /// </summary>
     private string ComputeSign(string jsonBody)
     {
         var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(jsonBody));
         var input = base64 + _apiKey;
         var hashBytes = MD5.HashData(Encoding.UTF8.GetBytes(input));
         return Convert.ToHexStringLower(hashBytes);
+    }
+
+    /// <summary>
+    /// Performs a constant-time comparison of two hex strings to mitigate
+    /// timing side channels when validating provider signatures.
+    /// </summary>
+    private static bool FixedTimeHexEquals(string expectedHex, string receivedHex)
+    {
+        if (expectedHex.Length != receivedHex.Length) return false;
+
+        byte[] a;
+        byte[] b;
+        try
+        {
+            a = Convert.FromHexString(expectedHex);
+            b = Convert.FromHexString(receivedHex);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        return CryptographicOperations.FixedTimeEquals(a, b);
     }
 }

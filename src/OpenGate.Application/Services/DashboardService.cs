@@ -6,46 +6,54 @@ using OpenGate.Domain.Interfaces;
 
 namespace OpenGate.Application.Services;
 
+/// <summary>
+/// Aggregates dashboard statistics for the admin overview page. All
+/// expensive operations are pushed into the database to avoid streaming
+/// entire collections through the application process.
+/// </summary>
 public class DashboardService(
     IOrderRepository orderRepository,
     ITicketRepository ticketRepository,
     IMapper mapper) : IDashboardService
 {
+    /// <summary>
+    /// Builds the dashboard statistics with constant-memory database
+    /// aggregations and a single concurrent fan-out so the page load is
+    /// dominated by the slowest individual query.
+    /// </summary>
     public async Task<DashboardStatsDto> GetStatsAsync()
     {
-        var totalRevenue = await orderRepository.GetTotalRevenueAsync();
-        var allOrders = await orderRepository.GetAllAsync();
-        var ordersList = allOrders.ToList();
-        var activeOrders = await orderRepository.GetByStatusAsync(OrderStatus.Active);
-        var openTickets = await ticketRepository.GetOpenTicketsAsync();
+        var year = DateTime.UtcNow.Year;
 
-        var recentOrders = ordersList
-            .OrderByDescending(o => o.CreatedAt)
-            .Take(10)
-            .ToList();
+        var revenueTask = orderRepository.GetTotalRevenueAsync();
+        var statusCountsTask = orderRepository.GetStatusCountsAsync();
+        var openTicketsTask = ticketRepository.GetOpenTicketsAsync();
+        var recentTask = orderRepository.GetRecentAsync(10);
+        var monthlyTask = orderRepository.GetMonthlyRevenueAsync(year);
 
-        var monthlyRevenue = new List<MonthlyRevenueDto>();
-        var startOfYear = new DateTime(DateTime.UtcNow.Year, 1, 1);
-        for (var month = 1; month <= 12; month++)
-        {
-            var monthStart = new DateTime(DateTime.UtcNow.Year, month, 1);
-            var monthEnd = monthStart.AddMonths(1);
-            var amount = await orderRepository.GetTotalRevenueAsync(monthStart, monthEnd);
-            monthlyRevenue.Add(new MonthlyRevenueDto
+        await Task.WhenAll(revenueTask, statusCountsTask, openTicketsTask, recentTask, monthlyTask);
+
+        var statusCounts = await statusCountsTask;
+        long totalOrders = 0;
+        foreach (var pair in statusCounts) totalOrders += pair.Value;
+        statusCounts.TryGetValue(OrderStatus.Active, out var activeOrders);
+
+        var monthlyRevenue = (await monthlyTask)
+            .Select(b => new MonthlyRevenueDto
             {
-                Month = monthStart.ToString("yyyy-MM"),
-                Amount = amount
-            });
-        }
+                Month = new DateTime(year, b.Month, 1).ToString("yyyy-MM"),
+                Amount = b.Total
+            })
+            .ToList();
 
         return new DashboardStatsDto
         {
-            TotalRevenue = totalRevenue,
-            TotalOrders = ordersList.Count,
-            ActiveOrders = activeOrders.Count(),
-            TotalUsers = 0, // Requires IUserRepository - integrate when user store is available
-            OpenTickets = openTickets.Count(),
-            RecentOrders = mapper.Map<List<OrderDto>>(recentOrders),
+            TotalRevenue = await revenueTask,
+            TotalOrders = (int)Math.Min(int.MaxValue, totalOrders),
+            ActiveOrders = (int)Math.Min(int.MaxValue, activeOrders),
+            TotalUsers = 0,
+            OpenTickets = (await openTicketsTask).Count(),
+            RecentOrders = mapper.Map<List<OrderDto>>((await recentTask).ToList()),
             MonthlyRevenue = monthlyRevenue
         };
     }

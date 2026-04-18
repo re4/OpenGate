@@ -6,10 +6,16 @@ using OpenGate.Extensions.Abstractions;
 
 namespace OpenGate.Extensions.Proxmox;
 
-public class ProxmoxProvisioner : IServerProvisioner
+/// <summary>
+/// Proxmox VE provisioner. Validates the admin-configured ApiUrl against the
+/// SSRF allowlist (unless <c>AllowPrivateHosts</c> is enabled, which is the
+/// common Proxmox case for management LANs) and only relaxes TLS validation
+/// when <c>AllowSelfSignedCertificate</c> is explicitly enabled.
+/// </summary>
+public class ProxmoxProvisioner : IServerProvisioner, IDisposable
 {
-    private HttpClient _httpClient = null!;
-    private string _apiUrl = string.Empty;
+    private HttpClient? _httpClient;
+    private HttpClientHandler? _handler;
     private string _tokenId = string.Empty;
     private string _tokenSecret = string.Empty;
     private string _defaultNode = "pve";
@@ -18,6 +24,7 @@ public class ProxmoxProvisioner : IServerProvisioner
     private int _defaultMemory = 2048;
     private int _defaultCores = 1;
     private int _defaultDisk = 32;
+    private bool _allowSelfSigned;
 
     public string Name => "proxmox";
     public string DisplayName => "Proxmox VE";
@@ -26,7 +33,7 @@ public class ProxmoxProvisioner : IServerProvisioner
 
     public Task InitializeAsync(Dictionary<string, string> settings)
     {
-        _apiUrl = settings.GetValueOrDefault("ApiUrl", string.Empty).TrimEnd('/');
+        var apiUrl = settings.GetValueOrDefault("ApiUrl", string.Empty).TrimEnd('/');
         _tokenId = settings.GetValueOrDefault("TokenId", string.Empty);
         _tokenSecret = settings.GetValueOrDefault("TokenSecret", string.Empty);
         _defaultNode = settings.GetValueOrDefault("DefaultNode", "pve");
@@ -35,18 +42,31 @@ public class ProxmoxProvisioner : IServerProvisioner
         _defaultMemory = int.TryParse(settings.GetValueOrDefault("DefaultMemory", "2048"), out var mem) ? mem : 2048;
         _defaultCores = int.TryParse(settings.GetValueOrDefault("DefaultCores", "1"), out var cores) ? cores : 1;
         _defaultDisk = int.TryParse(settings.GetValueOrDefault("DefaultDisk", "32"), out var disk) ? disk : 32;
+        _allowSelfSigned = bool.TryParse(settings.GetValueOrDefault("AllowSelfSignedCertificate", "false"), out var allowCert) && allowCert;
+        var allowPrivate = bool.TryParse(settings.GetValueOrDefault("AllowPrivateHosts", "true"), out var allowHost) && allowHost;
 
-        // TODO: Make SSL validation configurable via ProxmoxIgnoreSsl setting
-        var handler = new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback = (_, _, _, sslPolicyErrors) =>
-                sslPolicyErrors == System.Net.Security.SslPolicyErrors.None ||
-                sslPolicyErrors == System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors
-        };
+        _httpClient?.Dispose();
+        _handler?.Dispose();
+        _httpClient = null;
+        _handler = null;
 
-        _httpClient = new HttpClient(handler)
+        if (string.IsNullOrEmpty(apiUrl)
+            || !HttpSecurity.TryValidateOutboundUrl(apiUrl + "/", allowPrivate, out var uri, out _)
+            || uri == null)
         {
-            BaseAddress = new Uri(_apiUrl)
+            return Task.CompletedTask;
+        }
+
+        _handler = new HttpClientHandler();
+        if (_allowSelfSigned)
+        {
+            _handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+        }
+
+        _httpClient = new HttpClient(_handler)
+        {
+            BaseAddress = uri,
+            Timeout = TimeSpan.FromSeconds(60)
         };
         _httpClient.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("PVEAPIToken", $"{_tokenId}={_tokenSecret}");
@@ -66,8 +86,25 @@ public class ProxmoxProvisioner : IServerProvisioner
             ["DefaultTemplateId"] = "",
             ["DefaultMemory"] = "2048",
             ["DefaultCores"] = "1",
-            ["DefaultDisk"] = "32"
+            ["DefaultDisk"] = "32",
+            ["AllowSelfSignedCertificate"] = "false",
+            ["AllowPrivateHosts"] = "true"
         };
+    }
+
+    private HttpClient RequireClient()
+        => _httpClient ?? throw new InvalidOperationException("Proxmox ApiUrl is not configured or is not allowed.");
+
+    /// <summary>
+    /// Disposes the gateway's <see cref="HttpClient"/> and underlying handler.
+    /// </summary>
+    public void Dispose()
+    {
+        _httpClient?.Dispose();
+        _handler?.Dispose();
+        _httpClient = null;
+        _handler = null;
+        GC.SuppressFinalize(this);
     }
 
     public async Task<ProvisionResult> CreateServerAsync(ProvisionRequest request)
@@ -178,7 +215,7 @@ public class ProxmoxProvisioner : IServerProvisioner
 
             await Task.Delay(2000);
 
-            var response = await _httpClient.DeleteAsync($"/nodes/{node}/qemu/{vmId}?purge=1&destroy-unreferenced-disks=1");
+            var response = await RequireClient().DeleteAsync($"/nodes/{node}/qemu/{vmId}?purge=1&destroy-unreferenced-disks=1");
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync();
@@ -202,7 +239,7 @@ public class ProxmoxProvisioner : IServerProvisioner
         try
         {
             var (node, vmId) = ParseExternalId(externalId);
-            var response = await _httpClient.GetAsync($"/nodes/{node}/qemu/{vmId}/status/current");
+            var response = await RequireClient().GetAsync($"/nodes/{node}/qemu/{vmId}/status/current");
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -283,7 +320,7 @@ public class ProxmoxProvisioner : IServerProvisioner
             await PostFormAsync($"/nodes/{node}/qemu/{vmId}/status/stop", new());
             await Task.Delay(3000);
 
-            var configResponse = await _httpClient.GetAsync($"/nodes/{node}/qemu/{vmId}/config");
+            var configResponse = await RequireClient().GetAsync($"/nodes/{node}/qemu/{vmId}/config");
             var configContent = await configResponse.Content.ReadAsStringAsync();
             string vmName = "reinstalled";
             int memory = _defaultMemory;
@@ -298,7 +335,7 @@ public class ProxmoxProvisioner : IServerProvisioner
                 if (configData.TryGetProperty("cores", out var coreP) && coreP.TryGetInt32(out var coreVal)) cores = coreVal;
             }
 
-            var deleteResponse = await _httpClient.DeleteAsync($"/nodes/{node}/qemu/{vmId}?purge=1&destroy-unreferenced-disks=1");
+            var deleteResponse = await RequireClient().DeleteAsync($"/nodes/{node}/qemu/{vmId}?purge=1&destroy-unreferenced-disks=1");
             if (!deleteResponse.IsSuccessStatusCode)
             {
                 var body = await deleteResponse.Content.ReadAsStringAsync();
@@ -376,7 +413,7 @@ public class ProxmoxProvisioner : IServerProvisioner
         try
         {
             var (node, vmId) = ParseExternalId(externalId);
-            var response = await _httpClient.GetAsync($"/nodes/{node}/storage/{_defaultStorage}/content?content=backup&vmid={vmId}");
+            var response = await RequireClient().GetAsync($"/nodes/{node}/storage/{_defaultStorage}/content?content=backup&vmid={vmId}");
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -468,7 +505,7 @@ public class ProxmoxProvisioner : IServerProvisioner
     {
         try
         {
-            var response = await _httpClient.GetAsync("/cluster/nextid");
+            var response = await RequireClient().GetAsync("/cluster/nextid");
             var content = await response.Content.ReadAsStringAsync();
             if (!response.IsSuccessStatusCode) return null;
 
@@ -506,7 +543,7 @@ public class ProxmoxProvisioner : IServerProvisioner
     private async Task<(bool Success, string? Error)> PostFormAsync(string path, Dictionary<string, string> parameters)
     {
         var content = new FormUrlEncodedContent(parameters);
-        var response = await _httpClient.PostAsync(path, content);
+        var response = await RequireClient().PostAsync(path, content);
         if (response.IsSuccessStatusCode)
             return (true, null);
 
@@ -517,6 +554,6 @@ public class ProxmoxProvisioner : IServerProvisioner
     private async Task PutFormAsync(string path, Dictionary<string, string> parameters)
     {
         var content = new FormUrlEncodedContent(parameters);
-        await _httpClient.PutAsync(path, content);
+        await RequireClient().PutAsync(path, content);
     }
 }

@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using OpenGate.Domain.Entities;
 using OpenGate.Domain.Enums;
 using OpenGate.Domain.Interfaces;
@@ -6,14 +9,25 @@ using Theme = OpenGate.Domain.Entities.Theme;
 
 namespace OpenGate.Web.Services;
 
+/// <summary>
+/// Bootstraps default roles, an initial administrator account, settings,
+/// themes, tax rates and extension configurations for a fresh installation.
+/// </summary>
 public static class SeedData
 {
-    public static async Task InitializeAsync(IServiceProvider serviceProvider)
+    /// <summary>
+    /// Initializes the database with default data. The bootstrap administrator
+    /// account is only created on a brand-new installation and uses a strong
+    /// random password (or one supplied via <c>OPENGATE_ADMIN_PASSWORD</c>).
+    /// The credentials are written to the application log a single time.
+    /// </summary>
+    public static async Task InitializeAsync(IServiceProvider serviceProvider, IConfiguration configuration)
     {
         using var scope = serviceProvider.CreateScope();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var settingRepository = scope.ServiceProvider.GetRequiredService<ISettingRepository>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("SeedData");
 
         string[] roles = { "Admin", "Client" };
         foreach (var role in roles)
@@ -24,7 +38,10 @@ public static class SeedData
             }
         }
 
-        var adminEmail = "admin@opengate.local";
+        var adminEmail = configuration["Bootstrap:AdminEmail"]
+            ?? Environment.GetEnvironmentVariable("OPENGATE_ADMIN_EMAIL")
+            ?? "admin@opengate.local";
+
         var adminUser = await userManager.FindByEmailAsync(adminEmail);
         if (adminUser == null)
         {
@@ -36,10 +53,33 @@ public static class SeedData
                 LastName = "User",
                 EmailConfirmed = true
             };
-            var result = await userManager.CreateAsync(adminUser, "Admin123!");
+
+            var configuredPassword = configuration["Bootstrap:AdminPassword"]
+                ?? Environment.GetEnvironmentVariable("OPENGATE_ADMIN_PASSWORD");
+            var password = string.IsNullOrWhiteSpace(configuredPassword)
+                ? GenerateStrongPassword()
+                : configuredPassword;
+
+            var result = await userManager.CreateAsync(adminUser, password);
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(adminUser, "Admin");
+
+                if (string.IsNullOrWhiteSpace(configuredPassword))
+                {
+                    logger.LogWarning(
+                        "Bootstrap admin account created. Email: {Email}. Temporary password: {Password}. Sign in immediately and change this password.",
+                        adminEmail,
+                        password);
+                }
+                else
+                {
+                    logger.LogInformation("Bootstrap admin account created for {Email} using password from configuration.", adminEmail);
+                }
+            }
+            else
+            {
+                logger.LogError("Failed to create bootstrap admin account: {Errors}", string.Join(", ", result.Errors.Select(e => e.Description)));
             }
         }
 
@@ -53,6 +93,41 @@ public static class SeedData
 
         var extensionConfigRepository = scope.ServiceProvider.GetRequiredService<IExtensionConfigRepository>();
         await SeedExtensionConfigsAsync(extensionConfigRepository, settingRepository);
+
+        var indexInitializer = scope.ServiceProvider.GetRequiredService<OpenGate.Infrastructure.Data.MongoIndexInitializer>();
+        await indexInitializer.EnsureIndexesAsync();
+    }
+
+    /// <summary>
+    /// Generates a cryptographically strong password that always satisfies the
+    /// configured Identity policy (lower, upper, digit, symbol, length 20).
+    /// </summary>
+    private static string GenerateStrongPassword()
+    {
+        const string lower = "abcdefghijkmnopqrstuvwxyz";
+        const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string digits = "23456789";
+        const string symbols = "!@#$%^&*()-_=+";
+        const string all = lower + upper + digits + symbols;
+
+        const int length = 20;
+        Span<char> buffer = stackalloc char[length];
+        buffer[0] = lower[RandomNumberGenerator.GetInt32(lower.Length)];
+        buffer[1] = upper[RandomNumberGenerator.GetInt32(upper.Length)];
+        buffer[2] = digits[RandomNumberGenerator.GetInt32(digits.Length)];
+        buffer[3] = symbols[RandomNumberGenerator.GetInt32(symbols.Length)];
+        for (var i = 4; i < length; i++)
+        {
+            buffer[i] = all[RandomNumberGenerator.GetInt32(all.Length)];
+        }
+
+        for (var i = length - 1; i > 0; i--)
+        {
+            var swap = RandomNumberGenerator.GetInt32(i + 1);
+            (buffer[i], buffer[swap]) = (buffer[swap], buffer[i]);
+        }
+
+        return new string(buffer);
     }
 
     private static async Task SeedSettingsAsync(ISettingRepository repository)
@@ -111,6 +186,7 @@ public static class SeedData
             new() { Key = "PayPalEnabled", Value = "false", Description = "Enable PayPal payment gateway", Group = "Payment" },
             new() { Key = "PayPalClientId", Value = "", Description = "PayPal REST API client ID", Group = "Payment" },
             new() { Key = "PayPalClientSecret", Value = "", Description = "PayPal REST API client secret", Group = "Payment" },
+            new() { Key = "PayPalWebhookId", Value = "", Description = "PayPal webhook ID used to verify inbound webhook signatures (required to accept webhooks)", Group = "Payment" },
             new() { Key = "PayPalSandbox", Value = "true", Description = "Use PayPal sandbox environment", Group = "Payment" },
 
             // Payment - Heleket
@@ -151,6 +227,7 @@ public static class SeedData
             new() { Key = "ProxmoxDefaultMemory", Value = "2048", Description = "Default memory (MB) for new VMs", Group = "Provisioning" },
             new() { Key = "ProxmoxDefaultCores", Value = "1", Description = "Default CPU cores for new VMs", Group = "Provisioning" },
             new() { Key = "ProxmoxDefaultDisk", Value = "32", Description = "Default disk size (GB) for new VMs", Group = "Provisioning" },
+            new() { Key = "ProxmoxAllowSelfSignedCertificate", Value = "false", Description = "Allow self-signed TLS certificates when calling the Proxmox API. Only enable for trusted/internal hosts.", Group = "Provisioning" },
 
             // Provisioning - VirtFusion
             new() { Key = "VirtFusionEnabled", Value = "false", Description = "Enable VirtFusion server provisioning", Group = "Provisioning" },

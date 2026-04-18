@@ -152,17 +152,18 @@ else
     private bool _loading = true;
     private string? _errorMessage;
     private bool _isOwner;
+    private string? _loadedId;
 
     protected override async Task OnInitializedAsync()
     {
         _currency = await CurrencyProvider.GetAsync();
-        await LoadDataAsync();
     }
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!string.IsNullOrEmpty(Id))
+        if (!string.IsNullOrEmpty(Id) && !string.Equals(_loadedId, Id, StringComparison.Ordinal))
         {
+            _loadedId = Id;
             await LoadDataAsync();
         }
     }
