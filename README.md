@@ -1,186 +1,184 @@
 # OpenGate
 
-**Open-Source Hosting Billing Platform**
+A self-hosted billing and client area for hosting companies. Think WHMCS or Blesta, but open source, written in modern .NET, and without the PHP.
 
-An open-source billing and client management platform for hosting companies, built with C# and .NET 10, OpenGate provides a modern, extensible alternative with Blazor Server UI and MongoDB.
+I built this because every billing platform I tried was either expensive, abandoned, or both. OpenGate is what I wished existed: products, orders, invoices, payments, server provisioning, and tickets — in one app that you actually own.
 
-## Features
+It's still young. Expect rough edges. PRs welcome.
 
-- **Product Catalog** - Create products with configurable options, billing cycles, and categories
-- **Client Storefront** - Browse, configure, and order products with a shopping cart
-- **Order Management** - Full lifecycle: pending, active, suspended, cancelled, terminated
-- **Invoicing** - Auto-generated invoices with PDF export (QuestPDF)
-- **Payment Gateways** - Stripe, PayPal, Heleket, Cryptomus, NOWPayments, and BTCPay Server integrations via extension system
-- **Server Provisioning** - Pterodactyl, Proxmox VE, and VirtFusion integrations for automated server management
-- **Server Management** - Customer-facing power controls (start/stop/restart), OS reinstall, and backup management
-- **Support Tickets** - Client ticket system with priority levels and staff replies
-- **Admin Dashboard** - Revenue stats, user management, and global settings
-- **Extension System** - Plugin architecture for custom gateways, provisioners, and features
-- **Email Notifications** - SMTP-based notifications for invoices, orders, and tickets
+## What it does
 
-## Tech Stack
+- Sell hosting (or anything else with a recurring price). Products have configurable options, billing cycles, categories, taxes.
+- A storefront for customers — cart, checkout, order history, invoices.
+- Orders move through the lifecycle you'd expect (pending → active → suspended → cancelled → terminated).
+- Invoices are generated automatically and exported to PDF via QuestPDF.
+- Payments through Stripe, PayPal, BTCPay Server, NOWPayments, Cryptomus, or Heleket. Webhooks are signed-and-verified, idempotent, and rate-limited.
+- Server provisioning for Pterodactyl, Proxmox VE, and VirtFusion. Customers can power-cycle, reinstall, and back up their own boxes from the client area.
+- Support tickets with priorities, staff replies, and file attachments (scanned with ClamAV if you point it at one).
+- An admin dashboard with the usual: revenue, recent orders, user management, and a settings panel that doesn't require restarting the app.
+- Email notifications over SMTP.
+- An extension model so you can plug in your own gateway or provisioner without forking.
 
-| Component | Technology |
-|-----------|------------|
-| Runtime | .NET 10 (LTS) |
-| Language | C# 14 |
-| Backend | ASP.NET Core 10 |
-| Frontend | Blazor Server |
-| Database | MongoDB |
-| Auth | ASP.NET Identity + MongoDbCore |
-| PDF | QuestPDF 2026.2 |
-| CSS | Bootstrap 5 + Bootstrap Icons |
-| Payments | Stripe.net 50.x, PayPal REST API v2, Heleket API, Cryptomus API, NOWPayments API, BTCPay Server Greenfield API |
-| Provisioning | Pterodactyl Panel API, Proxmox VE API, VirtFusion API |
-| Platform | x64 only |
+## Stack
 
-## Project Structure
+Nothing exotic.
+
+- .NET 10 / C# 14 / ASP.NET Core 10
+- Blazor Server for the UI (with a handful of MVC controllers for auth, webhooks, and the migration API)
+- MongoDB for storage, ASP.NET Identity on top of `AspNetCore.Identity.MongoDbCore`
+- QuestPDF for invoices
+- Bootstrap 5 for the front-end (no SPA framework, no build pipeline)
+- x64 only
+
+## Layout
 
 ```
-OpenGate/
-  src/
-    OpenGate.Domain/                  # Entities, enums, repository interfaces
-    OpenGate.Application/             # DTOs, service interfaces, service implementations
-    OpenGate.Infrastructure/          # MongoDB repositories, DI registration
-    OpenGate.Extensions.Abstractions/ # Extension/plugin contracts
-    OpenGate.Web/                     # Blazor Server app, controllers, UI
-  extensions/
-    OpenGate.Extensions.Stripe/       # Stripe payment gateway
-    OpenGate.Extensions.PayPal/       # PayPal payment gateway
-    OpenGate.Extensions.Heleket/      # Heleket crypto payment gateway
-    OpenGate.Extensions.Cryptomus/    # Cryptomus crypto payment gateway
-    OpenGate.Extensions.NowPayments/  # NOWPayments crypto payment gateway
-    OpenGate.Extensions.BtcPayServer/ # BTCPay Server payment gateway
-    OpenGate.Extensions.Pterodactyl/  # Pterodactyl server provisioner
-    OpenGate.Extensions.Proxmox/      # Proxmox VE server provisioner
-    OpenGate.Extensions.VirtFusion/   # VirtFusion server provisioner
+src/
+  OpenGate.Domain/                  entities, enums, repository contracts
+  OpenGate.Application/             DTOs and services
+  OpenGate.Infrastructure/          Mongo repos, DI, index initializer
+  OpenGate.Extensions.Abstractions/ extension contracts + shared helpers
+  OpenGate.Web/                     the actual app (Blazor + controllers)
+extensions/
+  OpenGate.Extensions.Stripe/
+  OpenGate.Extensions.PayPal/
+  OpenGate.Extensions.BtcPayServer/
+  OpenGate.Extensions.NowPayments/
+  OpenGate.Extensions.Cryptomus/
+  OpenGate.Extensions.Heleket/
+  OpenGate.Extensions.Pterodactyl/
+  OpenGate.Extensions.Proxmox/
+  OpenGate.Extensions.VirtFusion/
 ```
 
-## Prerequisites
+## Getting it running
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- [MongoDB](https://www.mongodb.com/try/download/community) (local or hosted)
+You'll need:
 
-## Getting Started
+- The [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- A MongoDB you can talk to (local Docker is fine)
 
-1. **Clone the repository**
-   ```bash
-   git clone <repo-url>
-   cd OpenGate
-   ```
+Then:
 
-2. **Configure MongoDB**
+```bash
+git clone <this repo>
+cd OpenGate
+dotnet run --project src/OpenGate.Web
+```
 
-   Edit `src/OpenGate.Web/appsettings.json`:
-   ```json
-   {
-     "MongoDB": {
-       "ConnectionString": "mongodb://localhost:27017",
-       "DatabaseName": "OpenGate"
-     }
-   }
-   ```
+Point `MongoDB:ConnectionString` and `MongoDB:DatabaseName` at your database in `src/OpenGate.Web/appsettings.json` (or override with environment variables — `MongoDB__ConnectionString`, etc).
 
-3. **Run the application**
-   ```bash
-   dotnet run --project src/OpenGate.Web
-   ```
+The first time the app starts it will:
 
-4. **Access the app**
+1. Create the required Mongo indexes.
+2. Seed the `Admin` and `Customer` roles, default settings, themes, and tax rates.
+3. Create the bootstrap admin account.
 
-   Navigate to `https://localhost:5001` (or the port shown in console output).
+About that admin account — there is **no hardcoded default password anymore**. Set one of these before first run:
 
-5. **Default admin account**
-   - Email: `admin@opengate.local`
-   - Password: `Admin123!`
+```bash
+# environment variables
+OPENGATE_ADMIN_EMAIL=you@example.com
+OPENGATE_ADMIN_PASSWORD=some-long-password-you-actually-remember
 
-## Configuration
+# or in appsettings.json
+"Bootstrap": {
+  "AdminEmail":    "you@example.com",
+  "AdminPassword": "some-long-password-you-actually-remember"
+}
+```
 
-### Payment Gateways
+If you don't set one, the app generates a strong random password on first run and writes it to the log **once**. Read it, log in, change it, move on. Don't ignore the log line; you'll have to reset it through Mongo if you do.
 
-Configure payment gateways in the Admin Settings panel (`/admin/settings`):
+## Configuring everything else
 
-**Stripe:**
-- Secret Key
-- Publishable Key
-- Webhook Secret
+Almost all configuration lives in the database, editable from `/admin/settings` while the app is running. Restarts aren't required for changes to settings, gateways, themes, or tax rates.
 
-**PayPal:**
-- Client ID
-- Client Secret
-- Sandbox mode (true/false)
+### Payment gateways
 
-**Heleket:**
-- Merchant ID (UUID)
-- API Key
+Pick the ones you want and fill in the keys. Each gateway exposes its own settings under the **Payments** tab.
 
-**Cryptomus:**
-- Merchant ID (UUID)
-- API Key
+- **Stripe** — secret key, publishable key, webhook secret. Webhook URL: `/api/webhooks/stripe`.
+- **PayPal** — client ID, client secret, sandbox toggle, **webhook ID** (required — webhooks are verified against PayPal's `/v1/notifications/verify-webhook-signature`, anything unsigned is rejected). Webhook URL: `/api/webhooks/paypal`.
+- **BTCPay Server** — your server URL, Greenfield API key, store ID, webhook secret. If your BTCPay is on a private LAN, set `AllowPrivateHosts` to `true` (off by default — see Security below).
+- **NOWPayments** — API key, IPN secret. HMAC-SHA512 signature verified in constant time.
+- **Cryptomus / Heleket** — merchant ID, API key. Same constant-time signature checks.
 
-**NOWPayments:**
-- API Key
-- IPN Secret (for webhook verification)
+### Server provisioners
 
-**BTCPay Server:**
-- Server URL (e.g. `https://btcpay.example.com`)
-- API Key (Greenfield API)
-- Store ID
-- Webhook Secret
+- **Pterodactyl** — panel URL, application API key, defaults for nest/egg/location.
+- **Proxmox VE** — API URL (`https://host:8006/api2/json`), API token (`user@pam!tokenname` + secret), default node/storage/template VMID, default specs. TLS validation is on by default; flip `AllowSelfSignedCertificate` if you really need it.
+- **VirtFusion** — API URL, bearer token, default OS / hypervisor group / package IDs.
 
-### Server Provisioning
+For all three, admin-supplied URLs go through an SSRF allowlist that rejects loopback / private / link-local / multicast hosts unless you explicitly opt in with `AllowPrivateHosts`. Proxmox is the common exception (it usually lives on a management LAN), so its default for that flag is `true`. The others default to `false`.
 
-**Pterodactyl:**
-- Panel URL
-- API Key
-- Default Nest/Egg/Location IDs
+### Email
 
-**Proxmox VE:**
-- API URL (e.g. `https://proxmox.example.com:8006/api2/json`)
-- Token ID (e.g. `user@pam!tokenname`)
-- Token Secret
-- Default Node, Storage, Template VMID
-- Default Memory, Cores, Disk
+Standard SMTP — host, port, username, password, from address. Set under the **Email** group in admin settings.
 
-**VirtFusion:**
-- API URL (e.g. `https://virtfusion.example.com/api/v1`)
-- API Token (Bearer token)
-- Default Operating System ID
-- Default Hypervisor Group ID
-- Default Package ID
+## What customers see
 
-### Email (SMTP)
+When an order has a provisioned server, a **Manage Server** button shows up. They get:
 
-Configure in Admin Settings under the "Email" group:
-- SMTP Host, Port, Username, Password
-- From address
+- Power controls (start / stop / restart)
+- Reinstall (with a confirmation step, because mistakes happen)
+- Backups (create / list / restore)
+- Live status and resource usage
 
-## API Endpoints
+It lives at `/my/orders/{orderId}/server` and is gated by ownership.
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/invoices/{id}/pdf` | Download invoice PDF |
-| `POST /api/webhooks/{gatewayName}` | Payment gateway webhooks |
+## API surface
 
-## Customer Server Management
+The HTTP surface is intentionally tiny. Everything else is Blazor.
 
-Active orders with a provisioned server show a **Manage Server** button. The server management page provides:
+| Method | Path | What it does |
+|--------|------|--------------|
+| `GET`  | `/api/invoices/{id}/pdf` | Download invoice PDF (auth required) |
+| `POST` | `/api/webhooks/{gateway}` | Inbound webhook for a payment gateway |
+| `POST` | `/api/migrate/...` | Admin DB migration helpers (admin-api rate limit) |
 
-- **Power Controls** - Start, stop, and restart the server
-- **Reinstall OS** - Wipe and reinstall with a chosen OS template (with confirmation)
-- **Backups** - Create, list, and restore backups
-- **Server Info** - Live status, resource usage, and provisioning details
+## Writing an extension
 
-Available at `/my/orders/{orderId}/server` for customers who own the order.
+Drop a class library in `extensions/`, reference `OpenGate.Extensions.Abstractions`, and implement one of:
 
-## Extending OpenGate
+- `IPaymentGateway` — for a new payment provider. Implement `CreatePaymentAsync`, `HandleWebhookAsync`, `RefundAsync`, etc.
+- `IServerProvisioner` — for a new control panel / hypervisor. Implement the lifecycle methods (create, suspend, terminate, power, reinstall, backups).
+- `IOpenGateExtension` — the base contract.
 
-Create custom extensions by implementing interfaces from `OpenGate.Extensions.Abstractions`:
+Then register it in `Program.cs`:
 
-- `IPaymentGateway` - Custom payment gateways
-- `IServerProvisioner` - Custom server provisioning (power, reinstall, backups, lifecycle)
-- `IOpenGateExtension` - Base extension interface
+```csharp
+builder.Services.AddScoped<IPaymentGateway, MyGateway>();
+```
+
+If your extension talks HTTP to a remote service, take an `IServiceProvider` in the constructor and grab `IHttpClientFactory` from it — the existing gateways do exactly that and reuse the host's `"OpenGate.Default"` client. Validate any admin-supplied URL with `HttpSecurity.TryValidateOutboundUrl` before you use it.
+
+## Security notes
+
+I take this seriously because billing software is a great target. The things that have been done so far:
+
+- Strong password policy and account lockout on failed login.
+- Rate limiting on login, register, webhooks, and admin APIs.
+- HSTS-friendly security headers and a strict CSP in production.
+- All webhook signatures verified in constant time. PayPal goes through the official verification endpoint; Stripe uses `Stripe.EventUtility`; the rest use HMAC + `CryptographicOperations.FixedTimeEquals`.
+- Idempotent webhook processing — duplicate deliveries can't double-pay an invoice.
+- SSRF guard on every admin-supplied URL (BTCPay, Pterodactyl, Proxmox, VirtFusion).
+- Stored XSS hardening on theme CSS variables — anything that isn't a hex color, rgba, integer, or font name is dropped before being injected into a `<style>`.
+- SVG uploads are disabled (they execute scripts when rendered as images).
+- Ticket attachment URLs are restricted to the local upload folder.
+- TLS validation is on by default for every outbound integration; opt in if you need self-signed.
+
+If you find something I missed, please open a private security advisory on GitHub instead of a public issue.
+
+## Status
+
+It runs. It works. I use it. There are still gaps:
+
+- More tests.
+- More themes (the current one is fine but lonely).
+- A documented upgrade path between versions.
+- Multi-currency display improvements.
 
 ## License
 
-MIT
+MIT. Do whatever you want with it, just don't blame me when something breaks.
