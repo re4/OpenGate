@@ -2,6 +2,7 @@
 @attribute [AllowAnonymous]
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IOrderService OrderService
+@inject IInvoiceService InvoiceService
 @inject ITicketService TicketService
 @inject BrandingProvider BrandingProvider
 @inject CurrencyProvider CurrencyProvider
@@ -26,93 +27,189 @@
         </div>
     </NotAuthorized>
     <Authorized>
-        <div class="page-header">
-            <h1>Overview</h1>
+        <div class="page-header d-flex justify-content-between align-items-end flex-wrap gap-2">
+            <div>
+                <h1>Welcome back@(string.IsNullOrEmpty(_firstName) ? "" : $", {_firstName}")</h1>
+                <p class="text-muted mb-0">Here's a snapshot of your account.</p>
+            </div>
+            <a href="/store" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i> Order new service</a>
         </div>
+
+        @if (_dueAmount > 0)
+        {
+            <div class="due-banner">
+                <span class="due-icon"><i class="bi bi-exclamation-triangle"></i></span>
+                <div class="due-text">
+                    You have <strong>@_currency.Format(_dueAmount)</strong> due across @_dueInvoiceCount invoice@(_dueInvoiceCount == 1 ? "" : "s").
+                    @if (_nextDueInvoice != null)
+                    {
+                        <small>Next due @_nextDueInvoice.DueDate.ToString("MMM d, yyyy") · #@_nextDueInvoice.InvoiceNumber</small>
+                    }
+                </div>
+                <a href="/my/invoices" class="btn btn-sm btn-danger">Pay now</a>
+            </div>
+        }
 
         <div class="row g-3 mb-4">
             <div class="col-sm-6 col-lg-3">
-                <div class="card stat-card">
+                <div class="card stat-card stat-active h-100">
                     <div class="card-body">
-                        <div class="stat-label">Active Orders</div>
+                        <span class="stat-icon"><i class="bi bi-hdd-rack"></i></span>
+                        <div class="stat-label">Active services</div>
                         <div class="stat-value">@_activeOrders</div>
-                        <span class="stat-icon"><i class="bi bi-box"></i></span>
+                        <div class="stat-trend">@_orderCount total</div>
                     </div>
                 </div>
             </div>
             <div class="col-sm-6 col-lg-3">
-                <div class="card stat-card">
+                <div class="card stat-card @(_dueAmount > 0 ? "stat-due" : "") h-100">
                     <div class="card-body">
-                        <div class="stat-label">Total Orders</div>
-                        <div class="stat-value">@_orderCount</div>
-                        <span class="stat-icon"><i class="bi bi-receipt"></i></span>
+                        <span class="stat-icon"><i class="bi bi-cash-coin"></i></span>
+                        <div class="stat-label">Balance due</div>
+                        <div class="stat-value font-mono">@_currency.Format(_dueAmount)</div>
+                        <div class="stat-trend">@_dueInvoiceCount unpaid</div>
                     </div>
                 </div>
             </div>
             <div class="col-sm-6 col-lg-3">
-                <div class="card stat-card">
+                <div class="card stat-card h-100">
                     <div class="card-body">
-                        <div class="stat-label">Open Tickets</div>
+                        <span class="stat-icon"><i class="bi bi-calendar-event"></i></span>
+                        <div class="stat-label">Next renewal</div>
+                        <div class="stat-value" style="font-size: 1.1rem; line-height: 1.4; padding-top: 0.25rem;">
+                            @(_nextRenewal?.ToString("MMM d, yyyy") ?? "—")
+                        </div>
+                        <div class="stat-trend">@(_nextRenewal == null ? "No upcoming renewals" : RelativeDays(_nextRenewal.Value))</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card stat-card h-100">
+                    <div class="card-body">
+                        <span class="stat-icon"><i class="bi bi-life-preserver"></i></span>
+                        <div class="stat-label">Open tickets</div>
                         <div class="stat-value">@_openTicketsCount</div>
-                        <span class="stat-icon"><i class="bi bi-chat-text"></i></span>
+                        <div class="stat-trend">
+                            <a href="/my/tickets" class="text-muted text-decoration-none">View support →</a>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="col-sm-6 col-lg-3">
-                <a href="/store" class="card text-decoration-none" style="border-style: dashed;">
-                    <div class="card-body d-flex align-items-center justify-content-center" style="min-height: 88px;">
-                        <span class="text-muted" style="font-size: 0.8125rem;">
-                            <i class="bi bi-plus me-1"></i>New order
-                        </span>
-                    </div>
-                </a>
             </div>
         </div>
 
-        @if (_recentOrders.Any())
-        {
-            <div class="card">
-                <div class="card-header">Recent orders</div>
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Order</th>
-                                <th>Items</th>
-                                <th>Total</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var order in _recentOrders.Take(5))
-                            {
-                                <tr style="cursor:pointer" @onclick='() => Nav.NavigateTo($"/my/orders/{order.Id}")'>
-                                    <td><code>@order.Id[..8]</code></td>
-                                    <td>@(order.Items.Count) item@(order.Items.Count != 1 ? "s" : "")</td>
-                                    <td class="font-mono">@_currency.Format(order.Total)</td>
-                                    <td><span class="badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span></td>
-                                    <td class="text-muted">@order.CreatedAt.ToString("MMM d")</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Active services</span>
+                        <a href="/my/orders" class="text-muted text-decoration-none" style="font-size: 0.75rem;">View all →</a>
+                    </div>
+                    @if (_activeOrdersList.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Service</th>
+                                        <th>Status</th>
+                                        <th>Next due</th>
+                                        <th class="text-end">Recurring</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var o in _activeOrdersList.Take(6))
+                                    {
+                                        var first = o.Items.FirstOrDefault();
+                                        <tr style="cursor:pointer" @onclick='() => Nav.NavigateTo($"/my/orders/{o.Id}")'>
+                                            <td>
+                                                <div style="font-weight: 500; color: var(--text);">@(first?.ProductName ?? "Service")</div>
+                                                <div class="text-muted" style="font-size: 0.7rem; font-family: var(--font-mono);">#@o.Id[..Math.Min(8, o.Id.Length)]</div>
+                                            </td>
+                                            <td><span class="badge badge-status status-@o.Status.ToString().ToLowerInvariant()">@o.Status</span></td>
+                                            <td>@(o.NextDueDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                                            <td class="text-end font-mono">@_currency.Format(o.Total)<span class="text-muted">@CycleSuffix(first?.BillingCycle)</span></td>
+                                            <td class="text-end">
+                                                @if (!string.IsNullOrEmpty(o.ProvisioningId))
+                                                {
+                                                    <a href="/my/orders/@o.Id/server" class="btn btn-sm btn-outline-primary" @onclick:stopPropagation="true">Manage</a>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="empty-state">
+                            <i class="bi bi-hdd-rack d-block"></i>
+                            <h5>No active services</h5>
+                            <p class="mb-3">Order something from the store to get started.</p>
+                            <a href="/store" class="btn btn-primary btn-sm">Browse store</a>
+                        </div>
+                    }
                 </div>
             </div>
-        }
+
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">Recent invoices</div>
+                    @if (_recentInvoices.Any())
+                    {
+                        <ul class="list-group list-group-flush" style="padding: 0.5rem 0.5rem;">
+                            @foreach (var inv in _recentInvoices)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center" style="border: 0; padding: 0.5rem 0.75rem;">
+                                    <div>
+                                        <div style="font-size: 0.8rem; font-family: var(--font-mono); color: var(--text);">@inv.InvoiceNumber</div>
+                                        <div class="text-muted" style="font-size: 0.7rem;">@inv.DueDate.ToString("MMM d, yyyy")</div>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="font-mono" style="font-size: 0.8rem;">@_currency.Format(inv.Total)</div>
+                                        <span class="badge badge-status status-@inv.Status.ToString().ToLowerInvariant()">@inv.Status</span>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                        <div class="card-footer text-end">
+                            <a href="/my/invoices" class="text-muted text-decoration-none" style="font-size: 0.75rem;">All invoices →</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="empty-state py-4">
+                            <i class="bi bi-receipt d-block"></i>
+                            <p class="mb-0">No invoices yet</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
     </Authorized>
 </AuthorizeView>
 
 @code {
     [Inject] private NavigationManager Nav { get; set; } = default!;
 
+    private string _firstName = "";
     private int _orderCount;
     private int _activeOrders;
     private int _openTicketsCount;
-    private List<OrderDto> _recentOrders = new();
+    private int _dueInvoiceCount;
+    private decimal _dueAmount;
+    private DateTime? _nextRenewal;
+    private InvoiceDto? _nextDueInvoice;
+    private List<OrderDto> _activeOrdersList = new();
+    private List<InvoiceDto> _recentInvoices = new();
     private BrandingInfo _branding = new();
     private CurrencyInfo _currency = new();
 
+    /// <summary>
+    /// Loads the data needed for the client overview: active services, billing
+    /// totals, the next renewal date, and a short list of recent invoices.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         _branding = await BrandingProvider.GetAsync();
@@ -123,17 +220,75 @@
 
         if (user.Identity?.IsAuthenticated == true)
         {
+            _firstName = ExtractFirstName(user.Identity.Name);
+
             var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (!string.IsNullOrEmpty(userId))
             {
-                var orders = (await OrderService.GetByUserAsync(userId)).ToList();
+                var ordersTask = OrderService.GetByUserAsync(userId);
+                var invoicesTask = InvoiceService.GetByUserAsync(userId);
+                var ticketsTask = TicketService.GetByUserAsync(userId);
+
+                await Task.WhenAll(ordersTask, invoicesTask, ticketsTask);
+
+                var orders = (await ordersTask).ToList();
+                var invoices = (await invoicesTask).ToList();
+                var tickets = await ticketsTask;
+
                 _orderCount = orders.Count;
                 _activeOrders = orders.Count(o => o.Status == OrderStatus.Active);
-                _recentOrders = orders.OrderByDescending(o => o.CreatedAt).Take(5).ToList();
+                _activeOrdersList = orders
+                    .Where(o => o.Status == OrderStatus.Active || o.Status == OrderStatus.Pending)
+                    .OrderBy(o => o.NextDueDate ?? DateTime.MaxValue)
+                    .ToList();
 
-                var tickets = await TicketService.GetByUserAsync(userId);
+                _nextRenewal = orders
+                    .Where(o => o.Status == OrderStatus.Active && o.NextDueDate.HasValue)
+                    .Select(o => o.NextDueDate!.Value)
+                    .OrderBy(d => d)
+                    .FirstOrDefault();
+                if (_nextRenewal == default) _nextRenewal = null;
+
+                var unpaid = invoices
+                    .Where(i => i.Status == InvoiceStatus.Unpaid || i.Status == InvoiceStatus.Overdue)
+                    .ToList();
+                _dueInvoiceCount = unpaid.Count;
+                _dueAmount = unpaid.Sum(i => i.Total);
+                _nextDueInvoice = unpaid.OrderBy(i => i.DueDate).FirstOrDefault();
+
+                _recentInvoices = invoices.OrderByDescending(i => i.CreatedAt).Take(5).ToList();
                 _openTicketsCount = tickets.Count(t => t.Status != TicketStatus.Closed);
             }
         }
+    }
+
+    private static string ExtractFirstName(string? identityName)
+    {
+        if (string.IsNullOrWhiteSpace(identityName)) return "";
+        var at = identityName.IndexOf('@');
+        var local = at > 0 ? identityName[..at] : identityName;
+        var parts = local.Split(new[] { ' ', '.', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "";
+        return char.ToUpperInvariant(parts[0][0]) + parts[0][1..].ToLowerInvariant();
+    }
+
+    private static string CycleSuffix(BillingCycle? c) => c switch
+    {
+        BillingCycle.Monthly => " /mo",
+        BillingCycle.Quarterly => " /qtr",
+        BillingCycle.SemiAnnually => " /6mo",
+        BillingCycle.Annually => " /yr",
+        BillingCycle.OneTime => "",
+        _ => ""
+    };
+
+    private static string RelativeDays(DateTime when)
+    {
+        var days = (int)(when.Date - DateTime.UtcNow.Date).TotalDays;
+        if (days == 0) return "today";
+        if (days == 1) return "in 1 day";
+        if (days > 1) return $"in {days} days";
+        if (days == -1) return "1 day overdue";
+        return $"{-days} days overdue";
     }
 }

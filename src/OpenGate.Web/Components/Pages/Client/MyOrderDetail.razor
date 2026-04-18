@@ -33,21 +33,56 @@ else
 {
     <nav aria-label="breadcrumb" class="mb-3">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="/my/orders">Orders</a></li>
-            <li class="breadcrumb-item active">Order @Id</li>
+            <li class="breadcrumb-item"><a href="/my/orders">Services</a></li>
+            <li class="breadcrumb-item active">@(_order.Items.FirstOrDefault()?.ProductName ?? "Service")</li>
         </ol>
     </nav>
 
-    <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h1>Order <code class="font-mono">@Id</code></h1>
-        <div class="d-flex gap-2 align-items-center">
-            <span class="badge badge-status status-@_order.Status.ToString().ToLowerInvariant()">@_order.Status</span>
-            @if (!string.IsNullOrEmpty(_order.ProvisioningId) && _order.Status == OrderStatus.Active)
-            {
-                <a href="/my/orders/@Id/server" class="btn btn-sm btn-primary">
-                    <i class="bi bi-hdd-rack me-1"></i> Manage Server
-                </a>
-            }
+    <div class="card mb-4" style="background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));">
+        <div class="card-body" style="padding: 1.25rem 1.5rem;">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+                <div class="d-flex align-items-start gap-3">
+                    <span style="width: 48px; height: 48px; border-radius: 10px; background: var(--accent-muted); color: var(--accent-hover); display: inline-flex; align-items: center; justify-content: center; font-size: 1.4rem;">
+                        <i class="bi bi-hdd-rack"></i>
+                    </span>
+                    <div>
+                        <div style="font-size: 1.15rem; font-weight: 600; color: var(--text); letter-spacing: -0.2px;">
+                            @(FirstItem?.ProductName ?? "Service")
+                        </div>
+                        <div class="text-muted" style="font-size: 0.75rem; font-family: var(--font-mono); margin-top: 0.15rem;">
+                            #@Id
+                        </div>
+                        <div class="d-flex gap-2 align-items-center mt-2">
+                            <span class="badge badge-status status-@_order.Status.ToString().ToLowerInvariant()">@_order.Status</span>
+                            @if (_order.NextDueDate.HasValue && _order.Status == OrderStatus.Active)
+                            {
+                                <span class="text-muted" style="font-size: 0.75rem;">
+                                    <i class="bi bi-calendar-event me-1"></i>Renews @_order.NextDueDate.Value.ToString("MMM d, yyyy")
+                                </span>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex flex-column align-items-end gap-2">
+                    <div style="font-size: 1.1rem; font-weight: 600; font-family: var(--font-mono); color: var(--text);">
+                        @_currency.Format(_order.Total)<small class="text-muted" style="font-weight: 400; font-size: 0.75rem;">@CycleSuffix(FirstItem?.BillingCycle)</small>
+                    </div>
+                    <div class="d-flex gap-2">
+                        @if (_unpaidInvoices.Count > 0)
+                        {
+                            <a href="/my/invoices/@_unpaidInvoices[0].Id/pay" class="btn btn-sm btn-danger">
+                                <i class="bi bi-credit-card me-1"></i> Pay @_currency.Format(_unpaidInvoices.Sum(i => i.Total))
+                            </a>
+                        }
+                        @if (!string.IsNullOrEmpty(_order.ProvisioningId) && _order.Status == OrderStatus.Active)
+                        {
+                            <a href="/my/orders/@Id/server" class="btn btn-sm btn-primary">
+                                <i class="bi bi-hdd-rack me-1"></i> Manage server
+                            </a>
+                        }
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -55,7 +90,7 @@ else
         <div class="col-lg-8">
             <div class="card mb-4">
                 <div class="card-header">
-                    <h5 class="mb-0">Order Items</h5>
+                    <h5 class="mb-0">Service contents</h5>
                 </div>
                 <div class="card-body p-0">
                     <table class="table mb-0">
@@ -154,6 +189,19 @@ else
     private bool _isOwner;
     private string? _loadedId;
 
+    private OrderItemDto? FirstItem => _order?.Items.FirstOrDefault();
+    private List<InvoiceDto> _unpaidInvoices = new();
+
+    private static string CycleSuffix(BillingCycle? c) => c switch
+    {
+        BillingCycle.Monthly => " /mo",
+        BillingCycle.Quarterly => " /qtr",
+        BillingCycle.SemiAnnually => " /6mo",
+        BillingCycle.Annually => " /yr",
+        BillingCycle.OneTime => "",
+        _ => ""
+    };
+
     protected override async Task OnInitializedAsync()
     {
         _currency = await CurrencyProvider.GetAsync();
@@ -191,6 +239,9 @@ else
                 if (_isOwner)
                 {
                     _invoices = (await InvoiceService.GetByOrderAsync(Id)).ToList();
+                    _unpaidInvoices = _invoices
+                        .Where(i => i.Status == InvoiceStatus.Unpaid || i.Status == InvoiceStatus.Overdue)
+                        .ToList();
                 }
             }
         }

@@ -5,11 +5,37 @@
 @inject NavigationManager Navigation
 @inject CurrencyProvider CurrencyProvider
 
-<PageTitle>My Orders - OpenGate</PageTitle>
+<PageTitle>My Services - OpenGate</PageTitle>
 
-<div class="page-header">
-    <h1>Orders</h1>
+<div class="page-header d-flex justify-content-between align-items-end flex-wrap gap-2">
+    <div>
+        <h1>My services</h1>
+        <p class="text-muted mb-0">Manage everything you have running with us.</p>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="btn-group" role="group" aria-label="View toggle">
+            <button class="btn btn-sm @(_view == "grid" ? "btn-outline-primary active" : "btn-outline-secondary")" @onclick='() => _view = "grid"' title="Grid view">
+                <i class="bi bi-grid"></i>
+            </button>
+            <button class="btn btn-sm @(_view == "list" ? "btn-outline-primary active" : "btn-outline-secondary")" @onclick='() => _view = "list"' title="List view">
+                <i class="bi bi-list-ul"></i>
+            </button>
+        </div>
+        <a href="/store" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i> Order new</a>
+    </div>
 </div>
+
+@if (!_loading && _orders.Any())
+{
+    <div class="filter-bar mb-3">
+        @foreach (var f in _filters)
+        {
+            <button class="filter-btn @(_filter == f.Key ? "active" : "")" @onclick='() => _filter = f.Key'>
+                @f.Label <span class="ms-1 text-muted" style="font-weight: 400;">@CountFor(f.Key)</span>
+            </button>
+        }
+    </div>
+}
 
 @if (_loading)
 {
@@ -26,10 +52,72 @@ else if (!string.IsNullOrEmpty(_errorMessage))
 else if (!_orders.Any())
 {
     <div class="empty-state">
-        <i class="bi bi-inbox d-block"></i>
-        <h5>No orders yet</h5>
-        <p class="mb-3">You haven't placed any orders. Browse our store to get started.</p>
-        <a href="/store" class="btn btn-primary">Browse Store</a>
+        <i class="bi bi-hdd-rack d-block"></i>
+        <h5>No services yet</h5>
+        <p class="mb-3">You haven't ordered anything. Browse our store to get started.</p>
+        <a href="/store" class="btn btn-primary">Browse store</a>
+    </div>
+}
+else if (!FilteredOrders.Any())
+{
+    <div class="empty-state">
+        <i class="bi bi-funnel d-block"></i>
+        <h5>Nothing here</h5>
+        <p class="mb-0">No services match this filter.</p>
+    </div>
+}
+else if (_view == "grid")
+{
+    <div class="service-grid">
+        @foreach (var order in FilteredOrders)
+        {
+            var first = order.Items.FirstOrDefault();
+            <a class="service-card" href="/my/orders/@order.Id">
+                <div class="service-head">
+                    <span class="service-icon"><i class="bi @IconFor(order)"></i></span>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <h6 class="service-title">@(first?.ProductName ?? "Service")</h6>
+                            <span class="badge badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span>
+                        </div>
+                        <div class="service-sub">#@TruncateId(order.Id)</div>
+                    </div>
+                </div>
+
+                <div class="service-meta">
+                    <div>
+                        <div class="label">Created</div>
+                        <div class="value">@order.CreatedAt.ToString("MMM d, yyyy")</div>
+                    </div>
+                    <div>
+                        <div class="label">Next due</div>
+                        <div class="value">@(order.NextDueDate?.ToString("MMM d, yyyy") ?? "—")</div>
+                    </div>
+                    @if (order.Items.Count > 1)
+                    {
+                        <div style="grid-column: 1 / -1;">
+                            <div class="label">Items</div>
+                            <div class="value" style="font-family: var(--font); font-size: 0.75rem; color: var(--text-dim);">@order.Items.Count items · @order.Items.Sum(i => i.Quantity) qty</div>
+                        </div>
+                    }
+                </div>
+
+                <div class="service-foot">
+                    <div class="service-price">
+                        @_currency.Format(order.Total)<small>@CycleSuffix(first?.BillingCycle)</small>
+                    </div>
+                    <div class="d-flex gap-1">
+                        @if (!string.IsNullOrEmpty(order.ProvisioningId) && order.Status == OrderStatus.Active)
+                        {
+                            <span class="btn btn-sm btn-outline-secondary" @onclick:stopPropagation="true" @onclick='() => Navigation.NavigateTo($"/my/orders/{order.Id}/server")'>
+                                <i class="bi bi-hdd-rack"></i> Manage
+                            </span>
+                        }
+                        <span class="btn btn-sm btn-outline-primary" tabindex="-1">View</span>
+                    </div>
+                </div>
+            </a>
+        }
     </div>
 }
 else
@@ -39,33 +127,38 @@ else
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
+                        <th>Service</th>
                         <th>Order ID</th>
-                        <th>Items</th>
-                        <th>Total</th>
+                        <th>Recurring</th>
                         <th>Status</th>
                         <th>Created</th>
-                        <th>Next Due</th>
-                        <th></th>
+                        <th>Next due</th>
+                        <th class="text-end"></th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var order in _orders)
+                    @foreach (var order in FilteredOrders)
                     {
-                        <tr>
-                            <td><code class="font-mono">@TruncateId(order.Id)</code></td>
-                            <td>@GetItemsSummary(order)</td>
-                            <td><span class="font-mono">@_currency.Format(order.Total)</span></td>
+                        var first = order.Items.FirstOrDefault();
+                        <tr style="cursor:pointer" @onclick='() => Navigation.NavigateTo($"/my/orders/{order.Id}")'>
                             <td>
-                                <span class="badge badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span>
+                                <div style="font-weight: 500;">@(first?.ProductName ?? "Service")</div>
+                                @if (order.Items.Count > 1)
+                                {
+                                    <div class="text-muted" style="font-size: 0.7rem;">+@(order.Items.Count - 1) more</div>
+                                }
                             </td>
+                            <td><code class="font-mono">@TruncateId(order.Id)</code></td>
+                            <td><span class="font-mono">@_currency.Format(order.Total)<span class="text-muted">@CycleSuffix(first?.BillingCycle)</span></span></td>
+                            <td><span class="badge badge-status status-@order.Status.ToString().ToLowerInvariant()">@order.Status</span></td>
                             <td>@order.CreatedAt.ToString("MMM d, yyyy")</td>
                             <td>@(order.NextDueDate?.ToString("MMM d, yyyy") ?? "—")</td>
-                            <td>
-                                <div class="d-flex gap-1">
+                            <td class="text-end">
+                                <div class="d-flex gap-1 justify-content-end" @onclick:stopPropagation="true">
                                     <a href="/my/orders/@order.Id" class="btn btn-sm btn-outline-primary">View</a>
                                     @if (!string.IsNullOrEmpty(order.ProvisioningId) && order.Status == OrderStatus.Active)
                                     {
-                                        <a href="/my/orders/@order.Id/server" class="btn btn-sm btn-outline-secondary" title="Manage Server">
+                                        <a href="/my/orders/@order.Id/server" class="btn btn-sm btn-outline-secondary" title="Manage server">
                                             <i class="bi bi-hdd-rack"></i>
                                         </a>
                                     }
@@ -84,6 +177,43 @@ else
     private CurrencyInfo _currency = new();
     private bool _loading = true;
     private string? _errorMessage;
+    private string _view = "grid";
+    private string _filter = "active";
+
+    private record FilterOption(string Key, string Label);
+    private static readonly FilterOption[] _filters =
+    {
+        new("active", "Active"),
+        new("pending", "Pending"),
+        new("suspended", "Suspended"),
+        new("cancelled", "Cancelled"),
+        new("all", "All")
+    };
+
+    /// <summary>
+    /// Returns the orders that match the currently selected status filter,
+    /// ordered with soonest renewals first.
+    /// </summary>
+    private IEnumerable<OrderDto> FilteredOrders =>
+        _filter switch
+        {
+            "all" => _orders,
+            "active" => _orders.Where(o => o.Status == OrderStatus.Active),
+            "pending" => _orders.Where(o => o.Status == OrderStatus.Pending),
+            "suspended" => _orders.Where(o => o.Status == OrderStatus.Suspended),
+            "cancelled" => _orders.Where(o => o.Status == OrderStatus.Cancelled || o.Status == OrderStatus.Terminated),
+            _ => _orders
+        };
+
+    private int CountFor(string key) => key switch
+    {
+        "all" => _orders.Count,
+        "active" => _orders.Count(o => o.Status == OrderStatus.Active),
+        "pending" => _orders.Count(o => o.Status == OrderStatus.Pending),
+        "suspended" => _orders.Count(o => o.Status == OrderStatus.Suspended),
+        "cancelled" => _orders.Count(o => o.Status == OrderStatus.Cancelled || o.Status == OrderStatus.Terminated),
+        _ => 0
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -102,7 +232,14 @@ else
 
             if (!string.IsNullOrEmpty(userId))
             {
-                _orders = (await OrderService.GetByUserAsync(userId)).OrderByDescending(o => o.CreatedAt).ToList();
+                _orders = (await OrderService.GetByUserAsync(userId))
+                    .OrderByDescending(o => o.CreatedAt)
+                    .ToList();
+
+                if (!_orders.Any(o => o.Status == OrderStatus.Active))
+                {
+                    _filter = "all";
+                }
             }
         }
         catch (Exception ex)
@@ -115,15 +252,27 @@ else
         }
     }
 
-    private static string TruncateId(string id) => id.Length > 8 ? id[..8] + "…" : id;
+    private static string TruncateId(string id) => id.Length > 8 ? id[..8] : id;
 
-    private static string GetItemsSummary(OrderDto order)
+    private static string IconFor(OrderDto order)
     {
-        var count = order.Items.Sum(i => i.Quantity);
-        var names = order.Items.Take(2).Select(i => i.ProductName).ToList();
-        var summary = string.Join(", ", names);
-        if (order.Items.Count > 2) summary += $" +{order.Items.Count - 2} more";
-        return $"{count} item(s): {summary}";
+        var name = order.Items.FirstOrDefault()?.ProductName?.ToLowerInvariant() ?? "";
+        if (name.Contains("vps") || name.Contains("vm") || name.Contains("server")) return "bi-hdd-rack";
+        if (name.Contains("game") || name.Contains("minecraft")) return "bi-controller";
+        if (name.Contains("web") || name.Contains("host")) return "bi-globe";
+        if (name.Contains("domain")) return "bi-link-45deg";
+        if (name.Contains("ssl") || name.Contains("cert")) return "bi-shield-lock";
+        if (name.Contains("license")) return "bi-key";
+        return "bi-box-seam";
     }
 
+    private static string CycleSuffix(BillingCycle? c) => c switch
+    {
+        BillingCycle.Monthly => " /mo",
+        BillingCycle.Quarterly => " /qtr",
+        BillingCycle.SemiAnnually => " /6mo",
+        BillingCycle.Annually => " /yr",
+        BillingCycle.OneTime => "",
+        _ => ""
+    };
 }
