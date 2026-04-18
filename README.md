@@ -170,6 +170,31 @@ I take this seriously because billing software is a great target. The things tha
 
 If you find something I missed, please open a private security advisory on GitHub instead of a public issue.
 
+## Upgrading
+
+If you're running the published Docker image via `docker-compose.yml`, upgrades are:
+
+```bash
+# bump OPENGATE_VERSION in your .env to the new tag
+docker compose pull
+docker compose up -d
+```
+
+Your data lives in named volumes (`mongo-data`, `mongo-config`, `opengate-uploads`), which are independent of the container — pulling a new image and recreating the app container does **not** touch them. On startup the new version idempotently re-runs index creation and seed checks, so nothing is dropped or reinserted; existing users, orders, invoices, payments, tickets, products, settings, and uploads are preserved as-is.
+
+The one command that **will** wipe your data is `docker compose down -v` (the `-v` flag deletes the named volumes). Don't run that unless you actually mean it. Plain `docker compose down`, `stop`, `restart`, `pull`, and `up -d` are all safe.
+
+Take a Mongo dump before any upgrade if you care about the data:
+
+```bash
+docker compose exec mongo \
+  mongodump --username "$MONGO_ROOT_USER" --password "$MONGO_ROOT_PASSWORD" \
+            --authenticationDatabase admin --archive --gzip \
+  > opengate-$(date +%F).archive.gz
+```
+
+Downgrades aren't supported — once a newer version has touched the database, going back to an older one is at your own risk.
+
 ## Status
 
 It runs. It works. I use it. There are still gaps:

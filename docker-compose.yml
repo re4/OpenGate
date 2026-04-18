@@ -1,0 +1,75 @@
+# OpenGate compose file.
+#
+# Pulls the released image from GHCR and brings up MongoDB next to it. The app
+# auto-bootstraps on first start (indexes + seed data + admin account), so all
+# you need to do is fill in the .env file and `docker compose up -d`.
+#
+# By default this pins to a specific release tag via OPENGATE_VERSION (e.g.
+# v0.1.0). Bumping that single value is the only supported way to upgrade --
+# the image is only built and published from CI on git release tags.
+
+name: opengate
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: opengate-mongo
+    restart: unless-stopped
+    command: ["--bind_ip_all", "--auth"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-opengate}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required}
+    volumes:
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
+    networks:
+      - opengate
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  app:
+    image: ghcr.io/mirin/opengate:${OPENGATE_VERSION:?Set OPENGATE_VERSION in .env to a release tag, e.g. v0.1.0}
+    container_name: opengate
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+
+      # Mongo. The double-underscore is how ASP.NET binds nested config keys
+      # from environment variables.
+      MongoDB__ConnectionString: "mongodb://${MONGO_ROOT_USER:-opengate}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin"
+      MongoDB__DatabaseName: "${MONGO_DB_NAME:-OpenGate}"
+
+      # First-run admin bootstrap. Set both, or leave them unset and read the
+      # generated password out of the container log on first start.
+      OPENGATE_ADMIN_EMAIL: "${OPENGATE_ADMIN_EMAIL:-}"
+      OPENGATE_ADMIN_PASSWORD: "${OPENGATE_ADMIN_PASSWORD:-}"
+    volumes:
+      - opengate-uploads:/app/wwwroot/uploads
+    networks:
+      - opengate
+    ports:
+      - "${OPENGATE_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  mongo-data:
+  mongo-config:
+  opengate-uploads:
+
+networks:
+  opengate:
+    driver: bridge

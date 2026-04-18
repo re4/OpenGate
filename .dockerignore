@@ -1,0 +1,35 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/.vscode/
+**/node_modules/
+**/TestResults/
+
+# git + ci
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# docs / packaging
+README.md
+LICENSE
+*.md
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# local secrets / state
+**/appsettings.*.Development.json
+**/appsettings.*.Local.json
+**/secrets.json
+**/.env
+**/.env.*
+*.user
+*.suo
+*.log
+
+# os junk
+.DS_Store
+Thumbs.db
