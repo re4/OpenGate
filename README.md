@@ -206,4 +206,13 @@ It runs. It works. I use it. There are still gaps:
 
 ## License
 
-MIT. Do whatever you want with it, just don't blame me when something breaks.
+OpenGate Source-Available License (see [`LICENSE`](LICENSE)).
+
+Short version, in plain English:
+
+- You **can** run OpenGate for free, fork it, modify it, self-host it, and use it to power your own hosting / billing business — charge your customers whatever you want for the services you provide with it.
+- You **cannot** sell, sublicense, or repackage the OpenGate source itself.
+- You **cannot** offer OpenGate to third parties as a hosted "billing panel as a service."
+- Keep the copyright notice and attribution intact.
+
+If you need different terms (white-label, SaaS reseller rights, etc.), reach out.

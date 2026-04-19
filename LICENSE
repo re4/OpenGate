@@ -1,21 +1,110 @@
-MIT License
+OpenGate Source-Available License, Version 1.0
 
 Copyright (c) 2026 Final
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Definitions
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+   "Software" means the OpenGate source code and any compiled binaries, assets,
+   documentation, and other materials in this repository, together with any
+   modified or derivative versions thereof.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+   "You" (or "Your") means an individual or legal entity exercising rights
+   under this License.
+
+   "Hosted Products" means goods or services that You sell, lease, or otherwise
+   make available to third parties and that are managed, billed, provisioned,
+   or delivered through Your own running instance of the Software (for example,
+   web hosting plans, virtual machines, game servers, domain registrations, or
+   licenses).
+
+   "Sell" means to offer, market, distribute, sublicense, lease, rent, or
+   otherwise transfer for a fee, for other consideration, or as part of any
+   paid offering.
+
+2. Grant of License
+
+   Subject to the terms and conditions of this License, the copyright holders
+   hereby grant You a worldwide, royalty-free, non-exclusive, perpetual
+   (subject to Section 5) license to:
+
+   (a) use, run, install, copy, and self-host the Software, including for
+       internal business purposes and for use by Your own employees and
+       contractors;
+
+   (b) modify the Software and create derivative works of it for Your own use;
+
+   (c) deploy and operate the Software, whether modified or not, in order to
+       sell, bill for, provision, manage, or otherwise deliver Your own Hosted
+       Products to Your customers; and
+
+   (d) distribute the Software in source or binary form to others, free of
+       charge, provided that the recipient also receives this License and all
+       copyright and attribution notices required by Section 4.
+
+3. Restrictions
+
+   The following are expressly NOT permitted under this License:
+
+   (a) You may not Sell the Software itself, whether in source or binary form,
+       in whole or in part, whether modified or unmodified. The Software
+       (including derivative works of it) may not itself be the product, the
+       license, the subscription, the download, or any other paid offering.
+
+   (b) You may not provide the Software, or substantially the same
+       functionality of the Software, to third parties as a hosted, managed,
+       or "software-as-a-service" offering. Operating the Software to deliver
+       Your own Hosted Products under Section 2(c) is permitted; operating it
+       so that the third party is the user of the OpenGate billing/admin
+       interface itself is not.
+
+   (c) You may not sublicense the Software, grant rights in the Software
+       broader than those granted by this License, or remove or weaken the
+       terms of this License when redistributing the Software.
+
+   (d) You may not remove, obscure, or alter the copyright notices, this
+       License text, or any "Powered by OpenGate" or similar attribution that
+       is present in the Software's user interface or source files, except
+       where the Software's own configuration explicitly supports doing so.
+
+   (e) You may not use the names, trademarks, service marks, or logos of the
+       copyright holders to endorse or promote products derived from the
+       Software without prior written permission.
+
+4. Notice and Attribution
+
+   All copies or substantial portions of the Software, whether in source or
+   binary form, must retain (a) the above copyright notice, (b) this License
+   in full, and (c) any NOTICE or attribution files that accompany the
+   Software.
+
+5. Termination
+
+   Any breach of Section 3 automatically and immediately terminates the
+   rights granted to You under this License. Upon termination, You must cease
+   all use, distribution, and operation of the Software and destroy all
+   copies in Your possession or control. Sections 6 and 7 survive termination.
+
+6. Disclaimer of Warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. YOU BEAR THE
+   ENTIRE RISK AS TO THE QUALITY, PERFORMANCE, AND SECURITY OF THE SOFTWARE.
+
+7. Limitation of Liability
+
+   IN NO EVENT AND UNDER NO LEGAL THEORY (WHETHER IN CONTRACT, TORT, OR
+   OTHERWISE) SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY
+   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+   (INCLUDING, WITHOUT LIMITATION, LOSS OF PROFITS, REVENUE, DATA, OR USE)
+   ARISING FROM OR RELATED TO THE SOFTWARE OR THIS LICENSE, EVEN IF ADVISED OF
+   THE POSSIBILITY OF SUCH DAMAGES.
+
+8. Plain-English Summary (non-binding)
+
+   You can run OpenGate for free, fork it, modify it, and use it to power a
+   hosting / billing business where you charge customers for the products and
+   services you provide. You cannot turn around and sell OpenGate itself, you
+   cannot rent it out to other people as their billing panel, and you cannot
+   strip out the attribution. If a clause in this summary conflicts with the
+   terms above, the terms above control.
